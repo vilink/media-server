@@ -2,8 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void sip_param_params_free(struct sip_param_t* param)
+static void sip_param_free(struct sip_param_t* param)
 {
+	(void)param;
 }
 
 DARRAY_IMPLEMENT(sip_uri, 3);
@@ -95,7 +96,7 @@ int sip_params_find_int(const struct sip_params_t* params, const char* name, int
 	const struct sip_param_t* p;
 	p = sip_params_find(params, name, bytes);
 	if (NULL == p) return -ENOENT; // not found
-	*value = cstrtol(&p->value, NULL, 10);
+	*value = (int)cstrtol(&p->value, NULL, 10);
 	return 0;
 }
 
@@ -115,6 +116,24 @@ int sip_params_find_double(const struct sip_params_t* params, const char* name, 
 	if (NULL == p) return -ENOENT; // not found
 	*value = cstrtod(&p->value, NULL);
 	return 0;
+}
+
+int sip_params_add_or_update(struct sip_params_t* params, const char* name, int bytes, const struct cstring_t* value)
+{
+	struct sip_param_t* param, item;
+	param = (struct sip_param_t*)sip_params_find(params, name, bytes);
+	if (param)
+	{
+		param->value.p = value->p;
+		param->value.n = value->n;
+		return 0;
+	}
+
+	item.name.p = name;
+	item.name.n = bytes;
+	item.value.p = value->p;
+	item.value.n = value->n;
+	return sip_params_push(params, &item);
 }
 
 int sip_param_write(const struct sip_param_t* param, char* data, const char* end)
@@ -145,7 +164,7 @@ int sip_params_write(const struct sip_params_t* params, char* data, const char* 
 		p += n;
 	}
 
-	return p - data;
+	return (int)(p - data);
 }
 
 #if defined(DEBUG) || defined(_DEBUG)

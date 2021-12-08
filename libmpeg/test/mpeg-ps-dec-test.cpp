@@ -22,7 +22,7 @@ inline const char* ftimestamp(int64_t t, char* buf)
     return buf;
 }
 
-static void onpacket(void* /*param*/, int /*stream*/, int avtype, int flags, int64_t pts, int64_t dts, const void* data, size_t bytes)
+static int onpacket(void* /*param*/, int /*stream*/, int avtype, int flags, int64_t pts, int64_t dts, const void* data, size_t bytes)
 {
     static char s_pts[64], s_dts[64];
 
@@ -38,11 +38,11 @@ static void onpacket(void* /*param*/, int /*stream*/, int avtype, int flags, int
 
         fwrite(data, 1, bytes, afp);
     }
-    else if (PSI_STREAM_H264 == avtype)
+    else if (PSI_STREAM_H264 == avtype || PSI_STREAM_H265 == avtype)
     {
         static int64_t v_pts = 0, v_dts = 0;
         assert(0 == v_dts || dts >= v_dts);
-        printf("[V] pts: %s(%lld), dts: %s(%lld), diff: %03d/%03d\n", ftimestamp(pts, s_pts), pts, ftimestamp(dts, s_dts), dts, (int)(pts - v_pts) / 90, (int)(dts - v_dts) / 90);
+        printf("[V] pts: %s(%lld), dts: %s(%lld), diff: %03d/%03d, size: %u\n", ftimestamp(pts, s_pts), pts, ftimestamp(dts, s_dts), dts, (int)(pts - v_pts) / 90, (int)(dts - v_dts) / 90, bytes);
         v_pts = pts;
         v_dts = dts;
 
@@ -51,7 +51,22 @@ static void onpacket(void* /*param*/, int /*stream*/, int avtype, int flags, int
     else
     {
         //assert(0);
+
+        static int64_t x_pts = 0, x_dts = 0;
+        if (PTS_NO_VALUE == dts)
+            dts = pts;
+        //assert(0 == x_dts || dts >= x_dts);
+        //printf("[X] pts: %s(%lld), dts: %s(%lld), diff: %03d/%03d\n", ftimestamp(pts, s_pts), pts, ftimestamp(dts, s_dts), dts, (int)(pts - x_pts), (int)(dts - x_dts));
+        x_pts = pts;
+        x_dts = dts;
     }
+
+    return 0;
+}
+
+static void mpeg_ps_dec_testonstream(void* param, int stream, int codecid, const void* extra, int bytes, int finish)
+{
+    printf("stream %d, codecid: %d, finish: %s\n", stream, codecid, finish ? "true" : "false");
 }
 
 static uint8_t s_packet[2 * 1024 * 1024];
@@ -62,13 +77,24 @@ void mpeg_ps_dec_test(const char* file)
     vfp = fopen("v.h264", "wb");
     afp = fopen("a.aac", "wb");
 
-    size_t n, i= 0;
+    struct ps_demuxer_notify_t notify = {
+        mpeg_ps_dec_testonstream,
+    };
     ps_demuxer_t* ps = ps_demuxer_create(onpacket, NULL);
+    ps_demuxer_set_notify(ps, &notify, NULL);
+
+    size_t n, i = 0, r = 0;
     while ((n = fread(s_packet + i, 1, sizeof(s_packet) - i, fp)) > 0)
     {
-        size_t r = ps_demuxer_input(ps, s_packet, n + i);
+        r = ps_demuxer_input(ps, s_packet, n + i);
         memmove(s_packet, s_packet + r, n + i - r);
         i = n + i - r;
+    }
+    while (i > 0 && r > 0)
+    {
+        r = ps_demuxer_input(ps, s_packet, i);
+        memmove(s_packet, s_packet + r, i - r);
+        i -= r;
     }
     ps_demuxer_destroy(ps);
 

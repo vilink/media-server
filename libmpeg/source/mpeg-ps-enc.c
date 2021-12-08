@@ -1,5 +1,5 @@
 // ITU-T H.222.0(06/2012)
-// Information technology ¨C Generic coding of moving pictures and associated audio information: Systems
+// Information technology - Generic coding of moving pictures and associated audio information: Systems
 // 2.5.3.1 Program stream(p74)
 
 #include "mpeg-ts-proto.h"
@@ -45,7 +45,7 @@ static struct pes_t* ps_stream_find(struct ps_muxer_t *ps, int streamid)
 
 int ps_muxer_input(struct ps_muxer_t* ps, int streamid, int flags, int64_t pts, int64_t dts, const void* data, size_t bytes)
 {
-	int first;
+	int r, first;
 	size_t i, n, sz;
 	uint8_t *packet;
     struct pes_t* stream;
@@ -77,14 +77,19 @@ int ps_muxer_input(struct ps_muxer_t* ps, int streamid, int flags, int64_t pts, 
 	// http://www.bretl.com/mpeghtml/SCR.HTM
 	//the maximum allowed interval between SCRs is 700ms 
 	//ps->pack.system_clock_reference_base = (dts-3600) % (((int64_t)1)<<33);
-	ps->pack.system_clock_reference_base = dts - 3600;
+	ps->pack.system_clock_reference_base = dts >= 3600 ? (dts - 3600) : 0;
 	ps->pack.system_clock_reference_extension = 0;
 	ps->pack.program_mux_rate = 6106;
 	i += pack_header_write(&ps->pack, packet + i);
 
+#if !defined(MPEG_FIX_VLC_3_X_PS_SYSTEM_HEADER)
+    // https://github.com/videolan/vlc/blob/3.0.x/modules/demux/mpeg/ps.h#L488
+    // fix ps_pkt_parse_system -> ps_track_fill with default mp1/2 audio codec(without psm)
+    
 	// write system_header(p76)
 	if(0 == (ps->psm_period % 30))
 		i += system_header_write(&ps->system, packet + i);
+#endif
 
 	// write program_stream_map(p79)
 	if(0 == (ps->psm_period % 30))
@@ -153,11 +158,11 @@ int ps_muxer_input(struct ps_muxer_t* ps, int streamid, int flags, int64_t pts, 
 	}
 
 	assert(i < sz);
-	ps->func.write(ps->param, stream->sid, packet, i);
+	r = ps->func.write(ps->param, stream->sid, packet, i);
 	ps->func.free(ps->param, packet);
 
 	++ps->psm_period;
-	return 0;
+	return r;
 }
 
 struct ps_muxer_t* ps_muxer_create(const struct ps_muxer_func_t *func, void* param)
@@ -209,54 +214,54 @@ int ps_muxer_destroy(struct ps_muxer_t* ps)
 
 int ps_muxer_add_stream(struct ps_muxer_t* ps, int codecid, const void* extradata, size_t bytes)
 {
-    struct psm_t *psm;
-    struct pes_t *pes;
+	struct psm_t* psm;
+	struct pes_t* pes;
 
 	assert(bytes < 512);
-	if(!ps || ps->psm.stream_count >= sizeof(ps->psm.streams)/sizeof(ps->psm.streams[0]))
+	if (!ps || ps->psm.stream_count >= sizeof(ps->psm.streams) / sizeof(ps->psm.streams[0]))
 	{
 		assert(0);
 		return -1;
 	}
 
 	psm = &ps->psm;
-    pes = &psm->streams[psm->stream_count];
+	pes = &psm->streams[psm->stream_count];
 
 	if (mpeg_stream_type_video(codecid))
-    {
-        pes->sid = (uint8_t)(PES_SID_VIDEO + ps->system.video_bound);
+	{
+		pes->sid = (uint8_t)(PES_SID_VIDEO + ps->system.video_bound);
 
-        assert(ps->system.video_bound + 1 < 16);
-        ++ps->system.video_bound; // [0,16] max active video streams
-        ps->system.streams[ps->system.stream_count].buffer_bound_scale = 1;
-        /* FIXME -- VCD uses 46, SVCD uses 230, ffmpeg has 230 with a note that it is small */
-        ps->system.streams[ps->system.stream_count].buffer_size_bound = 400 /* 8191-13 bits max value */;
-    }
-    else if (mpeg_stream_type_audio(codecid))
-    {
-        pes->sid = (uint8_t)(PES_SID_AUDIO + ps->system.audio_bound);
+		assert(ps->system.video_bound + 1 < 16);
+		++ps->system.video_bound; // [0,16] max active video streams
+		ps->system.streams[ps->system.stream_count].buffer_bound_scale = 1;
+		/* FIXME -- VCD uses 46, SVCD uses 230, ffmpeg has 230 with a note that it is small */
+		ps->system.streams[ps->system.stream_count].buffer_size_bound = 400 /* 8191-13 bits max value */;
+	}
+	else if (mpeg_stream_type_audio(codecid))
+	{
+		pes->sid = (uint8_t)(PES_SID_AUDIO + ps->system.audio_bound);
 
-        assert(ps->system.audio_bound + 1 < 32);
-        ++ps->system.audio_bound; // [0,32] max active audio streams
-        ps->system.streams[ps->system.stream_count].buffer_bound_scale = 0;
-        /* This value HAS to be used for VCD (see VCD standard, p. IV-7).
-        * Right now it is also used for everything else. */
-        ps->system.streams[ps->system.stream_count].buffer_size_bound = 32 /* 4 * 1024 / 128 */;
-    }
-    else
-    {
-        assert(0);
+		assert(ps->system.audio_bound + 1 < 32);
+		++ps->system.audio_bound; // [0,32] max active audio streams
+		ps->system.streams[ps->system.stream_count].buffer_bound_scale = 0;
+		/* This value HAS to be used for VCD (see VCD standard, p. IV-7).
+		* Right now it is also used for everything else. */
+		ps->system.streams[ps->system.stream_count].buffer_size_bound = 32 /* 4 * 1024 / 128 */;
+	}
+	else
+	{
+		assert(0);
 		return -1;
 	}
 
-    if (bytes > 0)
-    {
-        pes->esinfo = (uint8_t*)malloc(bytes);
-        if (!pes->esinfo)
-            return -1;
-        memcpy(pes->esinfo, extradata, bytes);
-        pes->esinfo_len = (uint16_t)bytes;
-    }
+	if (bytes > 0)
+	{
+		pes->esinfo = (uint8_t*)malloc(bytes);
+		if (!pes->esinfo)
+			return -1;
+		memcpy(pes->esinfo, extradata, bytes);
+		pes->esinfo_len = (uint16_t)bytes;
+	}
 
     assert(psm->stream_count == ps->system.stream_count);
     ps->system.streams[ps->system.stream_count].stream_id = pes->sid;

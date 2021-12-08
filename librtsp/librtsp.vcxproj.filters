@@ -116,6 +116,12 @@
     <ClCompile Include="source\server\rtsp-server-parameter.c">
       <Filter>Source Files\server</Filter>
     </ClCompile>
+    <ClCompile Include="source\rtsp-multicast.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="source\sdp-options.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\rtsp-header-range.h">
@@ -158,6 +164,24 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\rtsp-media.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\rtp-sender.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\rtsp-demuxer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\rtsp-muxer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\rtsp-payloads.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\rtsp-server-aio.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\sdp-options.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

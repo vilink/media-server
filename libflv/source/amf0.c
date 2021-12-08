@@ -1,4 +1,5 @@
 #include "amf0.h"
+#include <stdint.h>
 #include <stddef.h>
 #include <string.h>
 #include <assert.h>
@@ -251,7 +252,7 @@ const uint8_t* AMFReadDouble(const uint8_t* ptr, const uint8_t* end, double* val
 		}
 		else
 		{
-			memcpy(&value, ptr, 8);
+			memcpy(value, ptr, 8);
 		}
 	}
 	return ptr + 8;

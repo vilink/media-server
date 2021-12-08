@@ -24,16 +24,24 @@ struct rtsp_client_handler_t
 	///network implementation
 	///@return >0-sent bytes, <0-error
 	int (*send)(void* param, const char* uri, const void* req, size_t bytes);
-	///create rtp/rtcp port 
-	int (*rtpport)(void* param, int media, unsigned short *rtp); // udp only(rtp%2=0 and rtcp=rtp+1), rtp=0 if you want to use RTP over RTSP(tcp mode)
+    
+	///create rtp/rtcp port
+    /// @param[in] source media source address
+    /// @param[in,out] port [INPUT] media port, [OUTPUT] udp: bind local port for rtp/rtcp(port[0] % 2 == 0), tcp: channel interleaved id
+    /// @param[in,out] ip [INPUT] media address, [OUTPUT] udp bind local ip address, 224~239.x.x.x for multicast udp transport
+    /// @param[in] len ip buffer length in byte
+    /// @return <0-error, 0-ignore this media track, other-RTSP_TRANSPORT_XXX
+	int (*rtpport)(void* param, int media, const char* source, unsigned short port[2], char* ip, int len);
 
 	/// rtsp_client_announce callback only
 	int (*onannounce)(void* param);
 
 	/// call rtsp_client_setup
-	int (*ondescribe)(void* param, const char* sdp);
+	int (*ondescribe)(void* param, const char* sdp, int len);
 
-	int (*onsetup)(void* param);
+	/// @param[in] timeout session timeout in seconds
+	/// @param[in] duration -1-unknown or live stream, other-rtsp stream duration in MS
+	int (*onsetup)(void* param, int timeout, int64_t duration);
 	int (*onplay)(void* param, int media, const uint64_t *nptbegin, const uint64_t *nptend, const double *scale, const struct rtsp_rtp_info_t* rtpinfo, int count); // play
     int (*onrecord)(void* param, int media, const uint64_t *nptbegin, const uint64_t *nptend, const double *scale, const struct rtsp_rtp_info_t* rtpinfo, int count); // record
 	int (*onpause)(void* param);
@@ -60,14 +68,17 @@ int rtsp_client_input(rtsp_client_t* rtsp, const void* data, size_t bytes);
 /// NOTICE: call in rtsp_client_handler_t callback only
 const char* rtsp_client_get_header(rtsp_client_t* rtsp, const char* name);
 
+/// rtsp options (optional)
+/// @param[in] commands optional required command, NULL if none
+int rtsp_client_options(struct rtsp_client_t* rtsp, const char* commands);
+
 /// rtsp describe (optional)
 int rtsp_client_describe(struct rtsp_client_t* rtsp);
 
 /// rtsp setup
-/// @param[in] uri media resource uri
 /// @param[in] sdp resource info. it can be null, sdp will get by describe command
 /// @return 0-ok, -EACCESS-auth required, try again, other-error.
-int rtsp_client_setup(rtsp_client_t* rtsp, const char* sdp);
+int rtsp_client_setup(rtsp_client_t* rtsp, const char* sdp, int len);
 
 /// stop and close session(TearDown)
 /// call onclose on done
@@ -106,7 +117,10 @@ const struct rtsp_header_transport_t* rtsp_client_get_media_transport(rtsp_clien
 const char* rtsp_client_get_media_encoding(rtsp_client_t* rtsp, int media);
 const char* rtsp_client_get_media_fmtp(rtsp_client_t* rtsp, int media);
 int rtsp_client_get_media_payload(rtsp_client_t* rtsp, int media);
-int rtsp_client_get_media_rate(rtsp_client_t* rtsp, int media); // return 0 if unknown rate
+/// @return media sampling rate/frequency, 0 if unknown
+int rtsp_client_get_media_rate(rtsp_client_t* rtsp, int media);
+/// @return SDP_M_MEDIA_AUDIO/SDP_M_MEDIA_VIDEO/SDP_M_MEDIA_xxx, see more @sdp.h
+int rtsp_client_get_media_type(rtsp_client_t* rtsp, int media);
 
 #if defined(__cplusplus)
 }

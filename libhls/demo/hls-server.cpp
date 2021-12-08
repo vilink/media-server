@@ -120,6 +120,7 @@ static int flv_handler(void* param, int codec, const void* data, size_t bytes, u
 static int STDCALL hls_server_worker(void* param)
 {
 	int r, type;
+	size_t taglen;
 	uint64_t clock;
 	uint32_t timestamp;
 	hls_playlist_t* playlist = (hls_playlist_t*)param;
@@ -135,7 +136,7 @@ static int STDCALL hls_server_worker(void* param)
 		flv_demuxer_t* demuxer = flv_demuxer_create(flv_handler, playlist->hls);
 
 		clock = 0;
-		while ((r = flv_reader_read(flv, &type, &timestamp, playlist->packet, sizeof(playlist->packet))) > 0)
+		while (1 == flv_reader_read(flv, &type, &timestamp, &taglen, playlist->packet, sizeof(playlist->packet)))
 		{
 			uint64_t now = system_clock();
 			if (0 == clock)
@@ -148,7 +149,8 @@ static int STDCALL hls_server_worker(void* param)
 					system_sleep(timestamp - (now - clock));
 			}
 
-			assert(0 == flv_demuxer_input(demuxer, type, playlist->packet, r, timestamp));
+			r = flv_demuxer_input(demuxer, type, playlist->packet, taglen, timestamp);
+			assert(0 == r);
 		}
 
 		flv_demuxer_destroy(demuxer);
@@ -203,14 +205,15 @@ static int hls_server_ts(http_session_t* session, const std::string& path, const
             std::atomic_fetch_add(&ts->ref, 1);
 			http_server_set_header(session, "Access-Control-Allow-Origin", "*");
 			http_server_set_header(session, "Access-Control-Allow-Methods", "GET, POST, PUT");
-			http_server_send(session, 200, ts->data, ts->size, hls_server_ts_onsend, ts);
+			http_server_send(session, ts->data, ts->size, hls_server_ts_onsend, ts);
 			printf("load file %s\n", file.c_str());
 			return 0;
 		}
 	}
 
 	printf("load ts file(%s) failed\n", file.c_str());
-	return http_server_send(session, 404, "", 0, NULL, NULL);
+	http_server_set_status_code(session, 404, NULL);
+	return http_server_send(session, "", 0, NULL, NULL);
 }
 
 static int hls_server_onlive(void* /*http*/, http_session_t* session, const char* /*method*/, const char* path)
@@ -243,7 +246,8 @@ static int hls_server_onlive(void* /*http*/, http_session_t* session, const char
 		}
 	}
 
-	return http_server_send(session, 404, "", 0, NULL, NULL);
+	http_server_set_status_code(session, 404, NULL);
+	return http_server_send(session, "", 0, NULL, NULL);
 }
 
 static int hls_server_onvod(void* /*http*/, http_session_t* session, const char* /*method*/, const char* path)
@@ -273,7 +277,8 @@ static int hls_server_onvod(void* /*http*/, http_session_t* session, const char*
 		return http_server_sendfile(session, fullpath.c_str(), NULL, NULL);
 	}
 
-	return http_server_send(session, 404, "", 0, NULL, NULL);
+	http_server_set_status_code(session, 404, NULL);
+	return http_server_send(session, "", 0, NULL, NULL);
 }
 
 void hls_server_test(const char* ip, int port)

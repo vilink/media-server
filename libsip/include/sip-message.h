@@ -19,12 +19,12 @@ extern "C" {
 #define SIP_METHOD_CANCEL		"CANCEL"
 #define SIP_METHOD_BYE			"BYE"
 #define SIP_METHOD_ACK			"ACK"
-#define SIP_METHOD_OPTIONS		"OPTIIONS"
+#define SIP_METHOD_OPTIONS		"OPTIONS"
 #define SIP_METHOD_REGISTER		"REGISTER"
 #define SIP_METHOD_PRACK		"PRACK" // rfc3262
 #define SIP_METHOD_INFO			"INFO" // rfc2976/rfc6086
 #define SIP_METHOD_REFER		"REFER" // rfc3515
-#define SIP_METHOD_MESSAGE		"MESSAGE" // rfc3248
+#define SIP_METHOD_MESSAGE		"MESSAGE" // rfc3428
 #define SIP_METHOD_SUBSCRIBE	"SUBSCRIBE" // rfc4660/rfc6665
 #define SIP_METHOD_NOTIFY		"NOTIFY" // rfc4660/rfc6665
 #define SIP_METHOD_PUBLISH		"PUBLISH" // rfc3903
@@ -113,7 +113,7 @@ int sip_message_destroy(struct sip_message_t* msg);
 int sip_message_clone(struct sip_message_t* msg, const struct sip_message_t* clone);
 int sip_message_init(struct sip_message_t* msg, const char* method, const char* uri, const char* from, const char* to);
 int sip_message_init2(struct sip_message_t* msg, const char* method, const struct sip_dialog_t* dialog);
-int sip_message_init3(struct sip_message_t* reply, const struct sip_message_t* req);
+int sip_message_init3(struct sip_message_t* reply, const struct sip_message_t* req, const struct sip_dialog_t* dialog);
 int sip_message_initack(struct sip_message_t* ack, const struct sip_message_t* origin);
 
 int sip_message_load(struct sip_message_t* msg, const struct http_parser_t* parser);
@@ -133,6 +133,7 @@ int sip_message_issubscribe(const struct sip_message_t* msg);
 int sip_message_set_uri(struct sip_message_t* msg, const char* uri);
 const struct sip_uri_t* sip_message_get_next_hop(const struct sip_message_t* msg);
 int sip_message_set_reply_default_contact(struct sip_message_t* reply);
+int sip_message_set_rport(struct sip_message_t* request, const char* addr, int port);
 
 int sip_message_get_header_count(const struct sip_message_t* msg);
 int sip_message_get_header(const struct sip_message_t* msg, int i, struct cstring_t* const name, struct cstring_t* const value);

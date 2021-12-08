@@ -11,6 +11,13 @@
 #include "rtp.h"
 #include <assert.h>
 
+#pragma comment(lib, "../../3rd/ffmpeg/lib/avcodec.lib")
+#pragma comment(lib, "../../3rd/ffmpeg/lib/avformat.lib")
+#pragma comment(lib, "../../3rd/ffmpeg/lib/avutil.lib")
+#pragma comment(lib, "../../3rd/ffmpeg/lib/avdevice.lib")
+#pragma comment(lib, "../../3rd/ffmpeg/lib/swresample.lib")
+#pragma comment(lib, "../../3rd/ffmpeg/lib/swscale.lib")
+
 extern "C" uint32_t rtp_ssrc(void);
 
 AVCodecContext* ffencoder_create(AVCodecParameters* codecpar)
@@ -520,8 +527,8 @@ void FFLiveSource::OnAudio(AVCodecParameters* codecpar)
 				"a=fmtp:%d profile-level-id=%d;object=%d;cpresent=0;config=";
 
 			n = snprintf((char*)buffer, sizeof(buffer), pattern,
-				RTP_PAYLOAD_MP4A, RTP_PAYLOAD_MP4A, 90000, m->encoder->channels,
-				RTP_PAYLOAD_MP4A, mpeg4_aac_profile_level(&aac), aac.profile);
+				RTP_PAYLOAD_LATM, RTP_PAYLOAD_LATM, 90000, m->encoder->channels,
+				RTP_PAYLOAD_LATM, mpeg4_aac_profile_level(&aac), aac.profile);
 
 			uint8_t config[6];
 			int r = mpeg4_aac_stream_mux_config_save(&aac, config, sizeof(config));
@@ -534,6 +541,7 @@ void FFLiveSource::OnAudio(AVCodecParameters* codecpar)
 			buffer[n] = '\0';
 
 			snprintf(m->name, sizeof(m->name), "%s", "MP4A-LATM");
+			m->payload = RTP_PAYLOAD_LATM;
 		}
 		else
 		{
@@ -558,10 +566,10 @@ void FFLiveSource::OnAudio(AVCodecParameters* codecpar)
 			buffer[n] = '\0';
 
 			snprintf(m->name, sizeof(m->name), "%s", "MPEG4-GENERIC");
+			m->payload = RTP_PAYLOAD_MP4A;
 		}
 
 		m->frequency = m->encoder->sample_rate;
-		m->payload = RTP_PAYLOAD_MP4A;
 		buffer[n++] = '\n';
 	}
 	else
@@ -644,7 +652,7 @@ void FFLiveSource::RTPFree(void* param, void *packet)
 	assert(m->packet == packet);
 }
 
-void FFLiveSource::RTPPacket(void* param, const void *packet, int bytes, uint32_t /*timestamp*/, int /*flags*/)
+int FFLiveSource::RTPPacket(void* param, const void *packet, int bytes, uint32_t /*timestamp*/, int /*flags*/)
 {
 	struct media_t* m = (struct media_t*)param;
 	assert(m->packet == packet);
@@ -656,5 +664,6 @@ void FFLiveSource::RTPPacket(void* param, const void *packet, int bytes, uint32_
 
 	int r = m->transport->Send(false, packet, bytes);
 	assert(r == (int)bytes);
+	return 0;
 }
 #endif

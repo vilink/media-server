@@ -1,21 +1,25 @@
 #include "sip-uas-transaction.h"
 #include "sip-transport.h"
 
-struct sip_uas_transaction_t* sip_uas_transaction_create(struct sip_agent_t* sip, const struct sip_message_t* req)
+int sip_uas_link_transaction(struct sip_agent_t* sip, struct sip_uas_transaction_t* t);
+int sip_uas_unlink_transaction(struct sip_agent_t* sip, struct sip_uas_transaction_t* t);
+
+struct sip_uas_transaction_t* sip_uas_transaction_create(struct sip_agent_t* sip, const struct sip_message_t* req, const struct sip_dialog_t* dialog, void* param)
 {
 	struct sip_uas_transaction_t* t;
 	t = (struct sip_uas_transaction_t*)calloc(1, sizeof(*t));
 	if (NULL == t) return NULL;
 
 	t->reply = sip_message_create(SIP_MESSAGE_REPLY);
-	if (0 != sip_message_init3(t->reply, req))
+	if (0 != sip_message_init3(t->reply, req, dialog))
 	{
 		free(t);
 		return NULL;
 	}
 
-	t->ref = 1;
+	t->ref = 1; // for agent uac link, don't destory it
 	t->agent = sip;
+	t->initparam = param;
 	LIST_INIT_HEAD(&t->link);
 	locker_create(&t->locker);
 	t->status = SIP_UAS_TRANSACTION_INIT;
@@ -28,7 +32,8 @@ struct sip_uas_transaction_t* sip_uas_transaction_create(struct sip_agent_t* sip
 	t->t2 = sip_message_isinvite(req) ? (64 * T1) : T2;
 
 	// Life cycle: from create -> destroy
-	sip_uas_add_transaction(sip, t);
+	sip_uas_link_transaction(sip, t);
+	sip_uas_transaction_timeout(t, TIMER_H); // trying timeout
 	return t;
 }
 
@@ -42,6 +47,7 @@ int sip_uas_transaction_release(struct sip_uas_transaction_t* t)
 	assert(NULL == t->timerg);
 	assert(NULL == t->timerh);
 	assert(NULL == t->timerij);
+	assert(t->link.next == t->link.prev);// unlink on termernate
 
 	// MUST: destroy t->reply after sip_uas_del_transaction
 	//sip_message_destroy((struct sip_message_t*)t->req);
@@ -51,6 +57,9 @@ int sip_uas_transaction_release(struct sip_uas_transaction_t* t)
         t->ondestroy(t->ondestroyparam);
         t->ondestroy = NULL;
     }
+
+	// MUST unlink before reply destroy
+	//sip_uas_unlink_transaction(t->agent, t);
 
 	if (t->reply)
     {
@@ -71,8 +80,10 @@ int sip_uas_transaction_release(struct sip_uas_transaction_t* t)
 
 int sip_uas_transaction_addref(struct sip_uas_transaction_t* t)
 {
-	assert(t->ref > 0);
-	return atomic_increment32(&t->ref);
+	int r;
+	r = atomic_increment32(&t->ref);
+	assert(r > 1);
+	return r;
 }
 
 //int sip_uas_transaction_destroy(struct sip_uas_transaction_t* t)
@@ -83,65 +94,65 @@ int sip_uas_transaction_addref(struct sip_uas_transaction_t* t)
 //	return sip_uas_transaction_release(t);
 //}
 
-int sip_uas_transaction_handler(struct sip_uas_transaction_t* t, struct sip_dialog_t* dialog, const struct sip_message_t* req)
+int sip_uas_transaction_handler(struct sip_uas_transaction_t* t, struct sip_dialog_t* dialog, const struct sip_message_t* req, void* param)
 {
+	//assert(t->param == t->initparam);
 	if (0 == cstrcasecmp(&req->u.c.method, SIP_METHOD_CANCEL))
 	{
-		return sip_uas_oncancel(t, dialog, req);
+		return sip_uas_oncancel(t, dialog, req, param);
 	}
 	else if (0 == cstrcasecmp(&req->u.c.method, SIP_METHOD_BYE))
 	{
-		return sip_uas_onbye(t, dialog, req);
+		return sip_uas_onbye(t, dialog, req, param);
 	}
 	else if (0 == cstrcasecmp(&req->u.c.method, SIP_METHOD_PRACK))
 	{
-		return sip_uas_onprack(t, dialog, req);
+		return sip_uas_onprack(t, dialog, req, param);
 	}
 	else if (0 == cstrcasecmp(&req->u.c.method, SIP_METHOD_UPDATE))
 	{
-		return sip_uas_onupdate(t, dialog, req);
+		return sip_uas_onupdate(t, dialog, req, param);
 	}
 	else if (0 == cstrcasecmp(&req->u.c.method, SIP_METHOD_REGISTER))
 	{
-		return sip_uas_onregister(t, req);
+		return sip_uas_onregister(t, req, param);
 	}
 	else if (0 == cstrcasecmp(&req->u.c.method, SIP_METHOD_OPTIONS))
 	{
-		return sip_uas_onoptions(t, req);
+		return sip_uas_onoptions(t, req, param);
 	}
 	else if (0 == cstrcasecmp(&req->u.c.method, SIP_METHOD_SUBSCRIBE))
 	{
-		return sip_uas_onsubscribe(t, dialog, req);
+		return sip_uas_onsubscribe(t, dialog, req, param);
 	}
 	else if (0 == cstrcasecmp(&req->u.c.method, SIP_METHOD_NOTIFY))
 	{
-		return sip_uas_onnotify(t, req);
+		return sip_uas_onnotify(t, req, param);
 	}
 	else if (0 == cstrcasecmp(&req->u.c.method, SIP_METHOD_PUBLISH))
 	{
-		return sip_uas_onpublish(t, req);
+		return sip_uas_onpublish(t, req, param);
 	}
 	else if (0 == cstrcasecmp(&req->u.c.method, SIP_METHOD_MESSAGE))
 	{
-		return t->handler->onmessage ? t->handler->onmessage(t->param, req, t, dialog, req->payload, req->size) : 0;
+		return t->handler->onmessage ? t->handler->onmessage(param, req, t, dialog ? dialog->session : NULL, req->payload, req->size) : 0;
 	}
 	else if (0 == cstrcasecmp(&req->u.c.method, SIP_METHOD_INFO))
     {
-        return sip_uas_oninfo(t, dialog, req);
+        return sip_uas_oninfo(t, dialog, req, param);
     }
 	else if (0 == cstrcasecmp(&req->u.c.method, SIP_METHOD_REFER))
 	{
-		return sip_uas_onrefer(t, dialog, req);
+		return sip_uas_onrefer(t, dialog, req, param);
 	}
 	else
 	{
-		assert(0);
 		// 8.2.1 Method Inspection (p46)
-		return sip_uas_reply(t, 405/*Method Not Allowed*/, NULL, 0);
+		return sip_uas_reply(t, 405/*Method Not Allowed*/, NULL, 0, param);
 	}
 }
 
-int sip_uas_transaction_dosend(struct sip_uas_transaction_t* t)
+int sip_uas_transaction_dosend(struct sip_uas_transaction_t* t, void* param)
 {
 	const struct sip_via_t *via;
 
@@ -160,30 +171,18 @@ int sip_uas_transaction_dosend(struct sip_uas_transaction_t* t)
 	via = sip_vias_get(&t->reply->vias, 0);
 	if (!via) return -1; // invalid via
 
-	return t->handler->send(t->param, cstrvalid(&via->received) ? &via->received : &via->host, t->data, t->size);
+	return t->handler->send(param, &via->protocol, &via->host, &via->received, via->rport, t->data, t->size);
 }
 
 int sip_uas_transaction_terminated(struct sip_uas_transaction_t* t)
 {
 	t->status = SIP_UAS_TRANSACTION_TERMINATED;
 
-	if (t->timerh)
-	{
-		sip_uas_stop_timer(t->agent, t, t->timerh);
-		t->timerh = NULL;
-	}
-	if (t->timerg)
-	{
-		sip_uas_stop_timer(t->agent, t, t->timerg);
-		t->timerg = NULL;
-	}
-	if (t->timerij)
-	{
-		sip_uas_stop_timer(t->agent, t, t->timerij);
-		t->timerij = NULL;
-	}
+	sip_uas_stop_timer(t->agent, t, &t->timerh);
+	sip_uas_stop_timer(t->agent, t, &t->timerg);
+	sip_uas_stop_timer(t->agent, t, &t->timerij);
 
-	sip_uas_del_transaction(t->agent, t);
+	sip_uas_unlink_transaction(t->agent, t);
 	return 0;
 }
 
@@ -192,7 +191,7 @@ void sip_uas_transaction_ontimeout(void* usrptr)
 	struct sip_uas_transaction_t* t;
 	t = (struct sip_uas_transaction_t*)usrptr;
 	locker_lock(&t->locker);
-	t->timerh = NULL;
+	sip_uas_stop_timer(t->agent, t, &t->timerh); // hijack free timer only, don't release transaction
 
 	if (t->status < SIP_UAS_TRANSACTION_CONFIRMED)
 	{
@@ -203,7 +202,8 @@ void sip_uas_transaction_ontimeout(void* usrptr)
 		// SHOULD generate a BYE to terminate the dialog.
 
 		// 8.1.3.1 Transaction Layer Errors (p42)
-		t->handler->onack(t->param, NULL, t, t->dialog->session, t->dialog, 408/*Invite Timeout*/, NULL, 0);
+		if (t->dialog)
+			t->handler->onack(t->initparam, NULL, t, t->dialog->session, t->dialog, 408/*Invite Timeout*/, NULL, 0);
 	}
 
 	locker_unlock(&t->locker);
@@ -216,27 +216,35 @@ static void sip_uas_transaction_onterminated(void* usrptr)
 	t = (struct sip_uas_transaction_t*)usrptr;
 
 	locker_lock(&t->locker);
+	sip_uas_stop_timer(t->agent, t, &t->timerij); // hijack free timer only, don't release transaction
 	if(SIP_UAS_TRANSACTION_TERMINATED != t->status)
 		sip_uas_transaction_terminated(t);
 	locker_unlock(&t->locker);
 	sip_uas_transaction_release(t);
 }
 
+// trying + proceeding timeout
+int sip_uas_transaction_timeout(struct sip_uas_transaction_t* t, int timeout)
+{
+	// try stop timer H
+	assert(t->status <= SIP_UAS_TRANSACTION_CONFIRMED);
+	sip_uas_stop_timer(t->agent, t, &t->timerh);
+
+	// restart timer H
+	assert(NULL == t->timerh);
+	t->timerh = sip_uas_start_timer(t->agent, t, timeout, sip_uas_transaction_ontimeout);
+	assert(t->timerh);
+	return 0;
+}
+
+// wait for network cache data
 int sip_uas_transaction_timewait(struct sip_uas_transaction_t* t, int timeout)
 {
 	if (SIP_UAS_TRANSACTION_TERMINATED == t->status)
 		return 0;
 
-	if (t->timerh)
-	{
-		sip_uas_stop_timer(t->agent, t, t->timerh);
-		t->timerh = NULL;
-	}
-	if (t->timerg)
-	{
-		sip_uas_stop_timer(t->agent, t, t->timerg);
-		t->timerg = NULL;
-	}
+	sip_uas_stop_timer(t->agent, t, &t->timerh);
+	sip_uas_stop_timer(t->agent, t, &t->timerg);
 
 	assert(NULL == t->timerij);
 	t->timerij = sip_uas_start_timer(t->agent, t, timeout, sip_uas_transaction_onterminated);

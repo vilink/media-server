@@ -26,24 +26,24 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
     <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
     <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -150,9 +150,11 @@
     <ClCompile Include="source\rtsp-header-session.c" />
     <ClCompile Include="source\rtsp-header-transport.c" />
     <ClCompile Include="source\rtsp-media.c" />
+    <ClCompile Include="source\rtsp-multicast.c" />
     <ClCompile Include="source\rtsp-reason.c" />
     <ClCompile Include="source\sdp-a-fmtp.c" />
     <ClCompile Include="source\sdp-a-rtpmap.c" />
+    <ClCompile Include="source\sdp-options.c" />
     <ClCompile Include="source\sdp.c" />
     <ClCompile Include="source\server\rtsp-server-announce.c" />
     <ClCompile Include="source\server\rtsp-server-describe.c" />
@@ -168,16 +170,22 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\rtp-over-rtsp.h" />
+    <ClInclude Include="include\rtp-sender.h" />
     <ClInclude Include="include\rtsp-client.h" />
+    <ClInclude Include="include\rtsp-demuxer.h" />
     <ClInclude Include="include\rtsp-header-range.h" />
     <ClInclude Include="include\rtsp-header-rtp-info.h" />
     <ClInclude Include="include\rtsp-header-session.h" />
     <ClInclude Include="include\rtsp-header-transport.h" />
     <ClInclude Include="include\rtsp-media.h" />
+    <ClInclude Include="include\rtsp-muxer.h" />
+    <ClInclude Include="include\rtsp-payloads.h" />
     <ClInclude Include="include\rtsp-reason.h" />
+    <ClInclude Include="include\rtsp-server-aio.h" />
     <ClInclude Include="include\rtsp-server.h" />
     <ClInclude Include="include\sdp-a-fmtp.h" />
     <ClInclude Include="include\sdp-a-rtpmap.h" />
+    <ClInclude Include="include\sdp-options.h" />
     <ClInclude Include="include\sdp.h" />
     <ClInclude Include="source\client\rtsp-client-internal.h" />
     <ClInclude Include="source\server\rtsp-server-internal.h" />
