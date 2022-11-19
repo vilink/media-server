@@ -37,9 +37,10 @@ static int rtmp_server_onaudio(void* flv, const void* data, size_t bytes, uint32
 
 void rtmp_server_input_test(const char* file)
 {
-	static uint8_t packet[8 * 1024 * 1024];
+	static uint8_t packet[1024];
 
-	void* flv = flv_writer_create("1.flv");
+	snprintf((char*)packet, sizeof(packet), "%s.flv", file);
+	void* flv = flv_writer_create((const char*)packet);
 
 	struct rtmp_server_handler_t handler;
 	memset(&handler, 0, sizeof(handler));

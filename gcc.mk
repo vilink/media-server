@@ -1,11 +1,22 @@
 RELEASE ?= 0 # default debug
 UNICODE ?= 0 # default ansi
+VERSION ?= 0
+FILENAME ?= 1
+ARCHBITS ?=  # 32/64 bits
+
+ifeq ($(shell uname -m), x86_64)
+	ARCHBITS = 64
+else ifeq ($(shell getconf LONG_BIT), 64)
+	ARCHBITS = 64
+else ifeq ($(shell arch), x86_64)
+	ARCHBITS = 64
+endif
 
 ifdef PLATFORM
 	CROSS:=$(PLATFORM)-
 else 
 	CROSS:=
-	PLATFORM:=linux
+	PLATFORM:=linux$(ARCHBITS)
 endif
 
 ifeq ($(RELEASE),1)
@@ -30,7 +41,6 @@ CC := $(CROSS)gcc
 CXX := $(CROSS)g++
 CFLAGS += -Wall -fPIC
 CXXFLAGS += -Wall
-DEPFLAGS = -MMD -MP -MF $(OUTPATH)/$(*F).d
 
 ifeq ($(RELEASE),1)
 	CFLAGS += -Wall -O2
@@ -41,6 +51,14 @@ else
 #	CFLAGS += -fsanitize=address
 	CXXFLAGS += $(CFLAGS)
 	DEFINES += DEBUG _DEBUG
+endif
+
+ifeq ($(FILENAME),1)
+	CFLAGS += -Wno-builtin-macro-redefined -D'__FILE_NAME__="$(notdir $<)"'
+endif
+
+ifeq ($(VERSION),1)
+	VERSIONFILE = version.o
 endif
 
 # default don't export anything
@@ -64,40 +82,71 @@ ifeq ($(UNICODE),1)
 else
 	OUTPATH += $(BUILD).$(PLATFORM)
 endif
-
-# make output dir
-$(shell mkdir -p $(OUTPATH) > /dev/null)
+OBJSPATH = $(OUTPATH)/objs
 
 OBJECT_FILES := $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(SOURCE_FILES)))
+OBJECT_FILES := $(addprefix $(OBJSPATH)/,$(OBJECT_FILES))
 DEPENDENCE_FILES := $(OBJECT_FILES:%.o=%.d)
-DEPENDENCE_FILES := $(foreach file,$(DEPENDENCE_FILES),$(OUTPATH)/$(notdir $(file)))
+MKDIR = @mkdir -p $(dir $@)
 
 #--------------------------Makefile Rules----------------------------
 #
 #--------------------------------------------------------------------
-$(OUTPATH)/$(OUTFILE): $(OBJECT_FILES) $(STATIC_LIBS)
+$(OUTPATH)/$(OUTFILE): $(OBJECT_FILES) $(STATIC_LIBS) $(VERSIONFILE) 
 ifeq ($(OUTTYPE),0)
-	$(CXX) -o $@ -Wl,-rpath . $(LDFLAGS) $^ $(addprefix -L,$(LIBPATHS)) $(addprefix -l,$(LIBS))
+	$(CXX) -o $@ -Wl,-rpath=. $(LDFLAGS) $^ $(addprefix -L,$(LIBPATHS)) $(addprefix -l,$(LIBS))
 else
 ifeq ($(OUTTYPE),1)
-	$(CXX) -o $@ -shared -fpic -rdynamic -Wl,-rpath . $(LDFLAGS) $^ $(addprefix -L,$(LIBPATHS)) $(addprefix -l,$(LIBS))
+	$(CXX) -o $@ -shared -fPIC -rdynamic -Wl,-rpath=. $(LDFLAGS) $^ $(addprefix -L,$(LIBPATHS)) $(addprefix -l,$(LIBS))
 else
-	$(AR) -rc $@ $^
+	@echo -e "\033[35m	AR	$(notdir $@)\033[0m"
+	@$(AR) -rc $@ $^
 endif
 endif
 	@echo make ok, output: $(OUTPATH)/$(OUTFILE)
 
-%.o : %.c
-	$(COMPILE.CC) -c $(DEPFLAGS) -o $@ $<
+$(OBJSPATH)/%.o : %.c
+	$(MKDIR)
+	@$(COMPILE.CC) -c -o $@ $<
+	@echo -e "\033[35m	CC	$(notdir $@)\033[0m"
 	
-%.o : %.cpp
-	$(COMPILE.CXX) -c $(DEPFLAGS) -o $@ $<
-	
--include $(DEPENDENCE_FILES)
+$(OBJSPATH)/%.o : %.cpp
+	$(MKDIR)
+	@$(COMPILE.CXX) -c -o $@ $<
+	@echo -e "\033[35m	CXX	$(notdir $@)\033[0m"
 
-version.h : version.ver
-	$(ROOT)/svnver.sh version.ver version.h
+$(OBJSPATH)/%.d: %.c
+	$(MKDIR)
+	@echo -e "\033[32m	CREATE	$(notdir $@)\033[0m"
+	@rm -f $@; \
+	 $(COMPILE.CC) -MM $(CFLAGS) $< > $@.$$$$; \
+     sed 's,\($(notdir $*)\)\.o[ :]*,$*\.o $@ : ,g' < $@.$$$$ > $@; \
+     rm -f $@.$$$$
+$(OBJSPATH)/%.d: %.cpp
+	$(MKDIR)
+	@echo -e "\033[32m	CREATE	$(notdir $@)\033[0m"
+	@rm -f $@; \
+	 $(COMPILE.CXX) -MM $(CXXFLAGS) $< > $@.$$$$; \
+     sed 's,\($(notdir $*)\)\.o[ :]*,$*\.o $@ : ,g' < $@.$$$$ > $@; \
+     rm -f $@.$$$$
+
+ifeq ($(MAKECMDGOALS), clean)
+else ifeq ($(MAKECMDGOALS), debug)
+else
+sinclude $(DEPENDENCE_FILES)
+endif
+
+version.o: version.ver $(OBJECT_FILES) $(STATIC_LIBS)
+	$(ROOT)/gitver.sh version.ver version.c
+	@$(COMPILE.CXX) -c -o $@ version.c
 
 .PHONY: clean
 clean:
-	rm -f $(OBJECT_FILES) $(OUTPATH)/$(OUTFILE) $(DEPENDENCE_FILES)
+	@echo -e "\033[35m	 rm -rf *.o  *.d version.h $(OUTPATH)/$(OUTFILE) \033[0m"
+	@rm -f $(OBJECT_FILES) $(OUTPATH)/$(OUTFILE) $(DEPENDENCE_FILES)
+	@rm -f version.c version.o
+
+debug:
+	echo $(OUTPATH)/$(OUTFILE)
+	echo $(OBJECT_FILES)
+	echo $(DEPENDENCE_FILES)

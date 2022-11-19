@@ -1,5 +1,5 @@
 #include "mpeg-ps.h"
-#include "mpeg-ts-proto.h"
+#include "mpeg-types.h"
 #include <stdio.h>
 #include <assert.h>
 #include <stdlib.h>
@@ -26,23 +26,23 @@ static int onpacket(void* /*param*/, int /*stream*/, int avtype, int flags, int6
 {
     static char s_pts[64], s_dts[64];
 
-    if (PSI_STREAM_AAC == avtype)
+    if (PSI_STREAM_AAC == avtype || PSI_STREAM_AUDIO_G711A == avtype || PSI_STREAM_AUDIO_G711U == avtype)
     {
         static int64_t a_pts = 0, a_dts = 0;
         if (PTS_NO_VALUE == dts)
             dts = pts;
         //assert(0 == a_dts || dts >= a_dts);
-        printf("[A] pts: %s(%lld), dts: %s(%lld), diff: %03d/%03d\n", ftimestamp(pts, s_pts), pts, ftimestamp(dts, s_dts), dts, (int)(pts - a_pts) / 90, (int)(dts - a_dts) / 90);
+        printf("[A] pts: %s(%lld), dts: %s(%lld), diff: %03d/%03d, size: %u\n", ftimestamp(pts, s_pts), pts, ftimestamp(dts, s_dts), dts, (int)(pts - a_pts) / 90, (int)(dts - a_dts) / 90, (unsigned int)bytes);
         a_pts = pts;
         a_dts = dts;
 
         fwrite(data, 1, bytes, afp);
     }
-    else if (PSI_STREAM_H264 == avtype || PSI_STREAM_H265 == avtype)
+    else if (PSI_STREAM_H264 == avtype || PSI_STREAM_H265 == avtype || PSI_STREAM_VIDEO_SVAC == avtype)
     {
         static int64_t v_pts = 0, v_dts = 0;
         assert(0 == v_dts || dts >= v_dts);
-        printf("[V] pts: %s(%lld), dts: %s(%lld), diff: %03d/%03d, size: %u\n", ftimestamp(pts, s_pts), pts, ftimestamp(dts, s_dts), dts, (int)(pts - v_pts) / 90, (int)(dts - v_dts) / 90, bytes);
+        printf("[V] pts: %s(%lld), dts: %s(%lld), diff: %03d/%03d, size: %u%s\n", ftimestamp(pts, s_pts), pts, ftimestamp(dts, s_dts), dts, (int)(pts - v_pts) / 90, (int)(dts - v_dts) / 90, (unsigned int)bytes, (flags & MPEG_FLAG_IDR_FRAME) ? " [I]": "");
         v_pts = pts;
         v_dts = dts;
 
@@ -56,7 +56,7 @@ static int onpacket(void* /*param*/, int /*stream*/, int avtype, int flags, int6
         if (PTS_NO_VALUE == dts)
             dts = pts;
         //assert(0 == x_dts || dts >= x_dts);
-        //printf("[X] pts: %s(%lld), dts: %s(%lld), diff: %03d/%03d\n", ftimestamp(pts, s_pts), pts, ftimestamp(dts, s_dts), dts, (int)(pts - x_pts), (int)(dts - x_dts));
+        printf("[X] pts: %s(%lld), dts: %s(%lld), diff: %03d/%03d\n", ftimestamp(pts, s_pts), pts, ftimestamp(dts, s_dts), dts, (int)(pts - x_pts), (int)(dts - x_dts));
         x_pts = pts;
         x_dts = dts;
     }

@@ -27,24 +27,24 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
     <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
     <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -155,13 +155,17 @@
   <ItemGroup>
     <ClInclude Include="include\mpeg-element-descriptor.h" />
     <ClInclude Include="include\mpeg-pes-proto.h" />
+    <ClInclude Include="include\mpeg-proto.h" />
     <ClInclude Include="include\mpeg-ps-proto.h" />
     <ClInclude Include="include\mpeg-ps.h" />
     <ClInclude Include="include\mpeg-ts-proto.h" />
     <ClInclude Include="include\mpeg-ts.h" />
     <ClInclude Include="include\mpeg-types.h" />
+    <ClInclude Include="include\mpeg-util.h" />
+    <ClInclude Include="source\mpeg-pes-internal.h" />
+    <ClInclude Include="source\mpeg-ps-internal.h" />
+    <ClInclude Include="source\mpeg-ts-internal.h" />
     <ClInclude Include="source\mpeg-ts-opus.h" />
-    <ClInclude Include="source\mpeg-util.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -22,7 +22,7 @@ PSFileSource::PSFileSource(const char *file)
 	func.free = Free;
 	func.write = Packet;
 	m_ps = ps_muxer_create(&func, this);
-    m_ps_stream = ps_muxer_add_stream(m_ps, STREAM_VIDEO_H264, NULL, 0);
+    m_ps_stream = ps_muxer_add_stream(m_ps, PSI_STREAM_H264, NULL, 0);
 
 	static struct rtp_payload_t s_psfunc = {
 		PSFileSource::RTPAlloc,
@@ -170,7 +170,7 @@ int PSFileSource::Packet(void* param, int /*avtype*/, void* pes, size_t bytes)
 {
 	PSFileSource* self = (PSFileSource*)param;
 	time64_t clock = time64_now();
-	return rtp_payload_encode_input(self->m_pspacker, pes, bytes, clock * 90 /*kHz*/);
+	return rtp_payload_encode_input(self->m_pspacker, pes, (int)bytes, (uint32_t)(clock * 90 /*kHz*/));
 }
 
 void* PSFileSource::RTPAlloc(void* param, int bytes)

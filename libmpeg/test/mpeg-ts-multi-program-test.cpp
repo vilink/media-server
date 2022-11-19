@@ -1,6 +1,5 @@
 #include "mpeg-ps.h"
 #include "mpeg-ts.h"
-#include "mpeg-ts-proto.h"
 #include "mov-reader.h"
 #include "mov-format.h"
 #include "mpeg4-aac.h"
@@ -131,7 +130,7 @@ void mpeg_ts_multi_program_test(const char* mp4)
 	memset(&ctx, 0, sizeof(ctx));
 
 	char output[256] = { 0 };
-	snprintf(output, sizeof(output), "%s.ts", mp4);
+	snprintf(output, sizeof(output) - 1, "%s.ts", mp4);
 
 	struct mpeg_ts_func_t tshandler;
 	tshandler.alloc = ts_alloc;
