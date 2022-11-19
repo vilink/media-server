@@ -43,7 +43,7 @@ static int rtp_decode_vp9(void* p, const void* packet, int bytes)
 	uint8_t layer_indices_preset;
 	uint8_t flex_mode;
 	uint8_t start_of_layer_frame;
-	uint8_t end_of_layer_frame;
+	//uint8_t end_of_layer_frame;
 	uint8_t scalability_struct_data_present;
 
 	const uint8_t *ptr, *pend;
@@ -55,12 +55,6 @@ static int rtp_decode_vp9(void* p, const void* packet, int bytes)
 		return -EINVAL;
 
 	rtp_payload_check(helper, &pkt);
-
-	if (helper->lost)
-	{
-		assert(0 == helper->size);
-		return 0; // packet discard
-	}
 
 	ptr = (const uint8_t *)pkt.payload;
 	pend = ptr + pkt.payloadlen;
@@ -77,7 +71,7 @@ static int rtp_decode_vp9(void* p, const void* packet, int bytes)
 	layer_indices_preset = ptr[0] & 0x20;
 	flex_mode = ptr[0] & 0x10;
 	start_of_layer_frame = ptr[0] & 0x80;
-	end_of_layer_frame = ptr[0] & 0x04;
+	//end_of_layer_frame = ptr[0] & 0x04;
 	scalability_struct_data_present = ptr[0] & 0x02;
 	ptr++;
 
@@ -88,11 +82,12 @@ static int rtp_decode_vp9(void* p, const void* packet, int bytes)
 		//    +-+-+-+-+-+-+-+-+
 		// M: |  EXTENDED PID | (RECOMMENDED)
 		//    +-+-+-+-+-+-+-+-+
-		uint16_t picture_id;
-		picture_id = ptr[0] & 0x7F;
+
+		//uint16_t picture_id;
+		//picture_id = ptr[0] & 0x7F;
 		if ((ptr[0] & 0x80) && ptr + 1 < pend)
 		{
-			picture_id = (ptr[0] << 8) | ptr[1];
+			//picture_id = (ptr[0] << 8) | ptr[1];
 			ptr++;
 		}
 		ptr++;
@@ -186,9 +181,9 @@ static int rtp_decode_vp9(void* p, const void* packet, int bytes)
 	if (ptr >= pend)
 	{
 		assert(0);
-		helper->size = 0;
+		//helper->size = 0;
 		helper->lost = 1;
-		helper->flags |= RTP_PAYLOAD_FLAG_PACKET_LOST;
+		//helper->flags |= RTP_PAYLOAD_FLAG_PACKET_LOST;
 		return -1; // invalid packet
 	}
 
@@ -199,7 +194,7 @@ static int rtp_decode_vp9(void* p, const void* packet, int bytes)
 	}
 
 	pkt.payload = ptr;
-	pkt.payloadlen = pend - ptr;
+	pkt.payloadlen = (int)(pend - ptr);
 	rtp_payload_write(helper, &pkt);
 
 	if (pkt.rtp.m)

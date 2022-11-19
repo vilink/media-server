@@ -1,6 +1,11 @@
 #include "sip-header.h"
 #include <stdio.h>
 
+void sip_substate_free(struct sip_substate_t* substate)
+{
+	sip_params_free(&substate->params);
+}
+
 /*
 Subscription-State = "Subscription-State" HCOLON substate-value *( SEMI subexp-params )
 substate-value = "active" / "pending" / "terminated" / extension-substate
@@ -17,7 +22,7 @@ int sip_header_substate(const char* s, const char* end, struct sip_substate_t* s
 	memset(substate, 0, sizeof(*substate));
 	sip_params_init(&substate->params);
 
-	sscanf(s, " %n%*[^ ;\t\r\n]%n", &i, &r);
+	sscanf((s && s < end) ? s : "", " %n%*[^ ;\t\r\n]%n", &i, &r);
 	substate->state.p = s + i;
 	substate->state.n = r - i;
 
@@ -39,11 +44,11 @@ int sip_header_substate(const char* s, const char* end, struct sip_substate_t* s
 			}
 			else if (0 == cstrcmp(&param->name, "expires"))
 			{
-				substate->expires = atoi(param->value.p);
+				substate->expires = (uint32_t)cstrtol(&param->value, NULL, 10);
 			}
 			else if (0 == cstrcmp(&param->name, "retry-after"))
 			{
-				substate->retry = atoi(param->value.p);
+				substate->retry = (uint32_t)cstrtol(&param->value, NULL, 10);
 			}
 		}
 	}
@@ -70,7 +75,7 @@ int sip_substate_write(const struct sip_substate_t* substate, char* data, const 
 	}
 
 	if (p < end) *p = '\0';
-	return p - data;
+	return (int)(p - data);
 }
 
 #if defined(DEBUG) || defined(_DEBUG)
@@ -83,7 +88,8 @@ void sip_header_substate_test(void)
 	s = "active;expires=600000";
 	assert(0 == sip_header_substate(s, s + strlen(s), &substate));
 	assert(0 == cstrcmp(&substate.state, "active") && substate.expires == 600000);
-	assert(strlen(s) == sip_substate_write(&substate, buf, buf + sizeof(buf)));
+	assert((int)strlen(s) == sip_substate_write(&substate, buf, buf + sizeof(buf)));
 	assert(0 == strcmp(s, buf));
+	sip_substate_free(&substate);
 }
 #endif

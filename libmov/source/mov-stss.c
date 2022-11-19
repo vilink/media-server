@@ -17,7 +17,7 @@ int mov_read_stss(struct mov_t* mov, const struct mov_box_t* box)
 	if (stbl->stss_count < entry_count)
 	{
 		void* p = realloc(stbl->stss, sizeof(stbl->stss[0]) * entry_count);
-		if (NULL == p) return ENOMEM;
+		if (NULL == p) return -ENOMEM;
 		stbl->stss = p;
 	}
 	stbl->stss_count = entry_count;
@@ -33,7 +33,7 @@ size_t mov_write_stss(const struct mov_t* mov)
 {
 	uint64_t offset;
 	uint64_t offset2;
-	size_t size, i, j;
+	uint32_t size, i, j;
 	const struct mov_sample_t* sample;
 	const struct mov_track_t* track = mov->track;
 

@@ -18,12 +18,15 @@ static int hls_handler(void* m3u8, const void* data, size_t bytes, int64_t pts, 
 
 	static int i = 0;
 	char name[128] = {0};
-	snprintf(name, sizeof(name), "%d.ts", i++);
+	snprintf(name, sizeof(name) - 1, "%d.ts", i++);
 	hls_m3u8_add((hls_m3u8_t*)m3u8, name, pts, duration, discontinue);
 
 	FILE* fp = fopen(name, "wb");
-	fwrite(data, 1, bytes, fp);
-	fclose(fp);
+    if(fp)
+    {
+        fwrite(data, 1, bytes, fp);
+        fclose(fp);
+    }
 
 	return 0;
 }
@@ -35,16 +38,16 @@ static int flv_handler(void* param, int codec, const void* data, size_t bytes, u
 	switch (codec)
 	{
 	case FLV_AUDIO_AAC:
-		return hls_media_input(hls, STREAM_AUDIO_AAC, data, bytes, pts, dts, 0);
+		return hls_media_input(hls, PSI_STREAM_AAC, data, bytes, pts, dts, 0);
 
 	case FLV_AUDIO_MP3:
-		return hls_media_input(hls, STREAM_AUDIO_MP3, data, bytes, pts, dts, 0);
+		return hls_media_input(hls, PSI_STREAM_MP3, data, bytes, pts, dts, 0);
 
 	case FLV_VIDEO_H264:
-		return hls_media_input(hls, STREAM_VIDEO_H264, data, bytes, pts, dts, flags ? HLS_FLAGS_KEYFRAME : 0);
+		return hls_media_input(hls, PSI_STREAM_H264, data, bytes, pts, dts, flags ? HLS_FLAGS_KEYFRAME : 0);
 
 	case FLV_VIDEO_H265:
-		return hls_media_input(hls, STREAM_VIDEO_H265, data, bytes, pts, dts, flags ? HLS_FLAGS_KEYFRAME : 0);
+		return hls_media_input(hls, PSI_STREAM_H265, data, bytes, pts, dts, flags ? HLS_FLAGS_KEYFRAME : 0);
 
 	default:
 		// nothing to do
@@ -60,19 +63,24 @@ void hls_segmenter_flv(const char* file)
 	flv_demuxer_t* demuxer = flv_demuxer_create(flv_handler, hls);
 
 	int r, type;
+	size_t taglen;
 	uint32_t timestamp;
 	static char data[2 * 1024 * 1024];
-	while ((r = flv_reader_read(flv, &type, &timestamp, data, sizeof(data))) > 0)
+	while (1 == flv_reader_read(flv, &type, &timestamp, &taglen, data, sizeof(data)))
 	{
-		flv_demuxer_input(demuxer, type, data, r, timestamp);
+		r = flv_demuxer_input(demuxer, type, data, taglen, timestamp);
+		assert(0 == r);
 	}
 
 	// write m3u8 file
-	hls_media_input(hls, STREAM_VIDEO_H264, NULL, 0, 0, 0, 0);
+	hls_media_input(hls, PSI_STREAM_H264, NULL, 0, 0, 0, 0);
 	hls_m3u8_playlist(m3u, 1, data, sizeof(data));
 	FILE* fp = fopen("playlist.m3u8", "wb");
-	fwrite(data, 1, strlen(data), fp);
-	fclose(fp);
+    if(fp)
+    {
+        fwrite(data, 1, strlen(data), fp);
+        fclose(fp);
+    }
 
 	flv_demuxer_destroy(demuxer);
 	flv_reader_destroy(flv);

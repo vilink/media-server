@@ -24,13 +24,19 @@ inline char flv_type(int type)
 {
 	switch (type)
 	{
-	case FLV_AUDIO_AAC: return 'A';
-	case FLV_AUDIO_MP3: return 'M';
-	case FLV_AUDIO_ASC: return 'a';
-	case FLV_VIDEO_H264: return 'V';
-	case FLV_VIDEO_AVCC: return 'v';
-	case FLV_VIDEO_H265: return 'H';
-	case FLV_VIDEO_HVCC: return 'h';
+	case FLV_AUDIO_ASC:
+	case FLV_AUDIO_OPUS_HEAD:
+		return 'a';
+	case FLV_AUDIO_AAC:
+	case FLV_AUDIO_MP3:
+	case FLV_AUDIO_OPUS:
+		return 'A';
+	case FLV_VIDEO_AVCC:
+	case FLV_VIDEO_HVCC:
+		return 'v';
+	case FLV_VIDEO_H264:
+	case FLV_VIDEO_H265:
+		return 'V';
 	default: return '*';
 	}
 }
@@ -41,7 +47,7 @@ static int onFLV(void* /*param*/, int codec, const void* data, size_t bytes, uin
 	static uint32_t v_pts = 0, v_dts = 0;
 	static uint32_t a_pts = 0, a_dts = 0;
 
-	printf("[%c] pts: %s, dts: %s, ", flv_type(codec), ftimestamp(pts, s_pts), ftimestamp(dts, s_dts));
+	printf("[%c] pts: %s, dts: %s, %u, cts: %d, ", flv_type(codec), ftimestamp(pts, s_pts), ftimestamp(dts, s_dts), dts, (int)(pts - dts));
 	
 	if (FLV_AUDIO_AAC == codec)
 	{
@@ -52,19 +58,19 @@ static int onFLV(void* /*param*/, int codec, const void* data, size_t bytes, uin
 		assert(bytes == get_adts_length((const uint8_t*)data, bytes));
 		fwrite(data, bytes, 1, aac);
 	}
-	else if (FLV_VIDEO_H264 == codec || FLV_VIDEO_H265 == codec)
+	else if (FLV_VIDEO_H264 == codec || FLV_VIDEO_H265 == codec || FLV_VIDEO_AV1 == codec)
 	{
-		printf("diff: %03d/%03d", (int)(pts - v_pts), (int)(dts - v_dts));
+		printf("diff: %03d/%03d %s", (int)(pts - v_pts), (int)(dts - v_dts), flags ? "[I]" : "");
 		v_pts = pts;
 		v_dts = dts;
 
 		fwrite(data, bytes, 1, h264);
 	}
-	else if (FLV_AUDIO_MP3 == codec)
+	else if (FLV_AUDIO_MP3 == codec || FLV_AUDIO_OPUS == codec)
 	{
 		fwrite(data, bytes, 1, aac);
 	}
-	else if (FLV_AUDIO_ASC == codec || FLV_VIDEO_AVCC == codec || FLV_VIDEO_HVCC == codec)
+	else if (FLV_AUDIO_ASC == codec || FLV_AUDIO_OPUS_HEAD == codec  || FLV_VIDEO_AVCC == codec || FLV_VIDEO_HVCC == codec || FLV_VIDEO_AV1C == codec)
 	{
 		// nothing to do
 	}
@@ -75,7 +81,7 @@ static int onFLV(void* /*param*/, int codec, const void* data, size_t bytes, uin
 	else
 	{
 		// nothing to do
-		assert(0);
+		assert(FLV_SCRIPT_METADATA == codec);
 	}
 
 	printf("\n");
@@ -91,11 +97,12 @@ void flv_reader_test(const char* file)
 	void* reader = flv_reader_create(file);
 	flv_demuxer_t* flv = flv_demuxer_create(onFLV, NULL);
 
-	int type, r = 0;
+	int type, r;
+	size_t taglen;
 	uint32_t timestamp;
-	while ((r = flv_reader_read(reader, &type, &timestamp, packet, sizeof(packet))) > 0)
+	while (1 == flv_reader_read(reader, &type, &timestamp, &taglen, packet, sizeof(packet)))
 	{
-		r = flv_demuxer_input(flv, type, packet, r, timestamp);
+		r = flv_demuxer_input(flv, type, packet, taglen, timestamp);
 		if (r < 0)
 		{
 			assert(0);

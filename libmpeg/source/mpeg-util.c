@@ -1,4 +1,4 @@
-#include "mpeg-ts-proto.h"
+#include "mpeg-proto.h"
 #include "mpeg-util.h"
 
 void pcr_write(uint8_t *ptr, int64_t pcr)
@@ -26,6 +26,10 @@ int mpeg_stream_type_video(int codecid)
     case PSI_STREAM_VIDEO_VC1:
     case PSI_STREAM_VIDEO_SVAC:
     case PSI_STREAM_VIDEO_DIRAC:
+    case PSI_STREAM_VIDEO_CAVS:
+    case PSI_STREAM_VP8:
+    case PSI_STREAM_VP9:
+    case PSI_STREAM_AV1:
         return 1;
     default:
         return 0;
@@ -43,11 +47,14 @@ int mpeg_stream_type_audio(int codecid)
     case PSI_STREAM_MP3:
     case PSI_STREAM_AUDIO_AC3:
     case PSI_STREAM_AUDIO_DTS:
+    case PSI_STREAM_AUDIO_EAC3:
     case PSI_STREAM_AUDIO_SVAC:
-    case PSI_STREAM_AUDIO_G711:
+    case PSI_STREAM_AUDIO_G711A:
+    case PSI_STREAM_AUDIO_G711U:
     case PSI_STREAM_AUDIO_G722:
     case PSI_STREAM_AUDIO_G723:
     case PSI_STREAM_AUDIO_G729:
+    case PSI_STREAM_AUDIO_OPUS:
         return 1;
     default:
         return 0;

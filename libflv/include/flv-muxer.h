@@ -29,11 +29,21 @@ int flv_muxer_aac(flv_muxer_t* muxer, const void* data, size_t bytes, uint32_t p
 /// @param[in] data mp3 stream
 int flv_muxer_mp3(flv_muxer_t* muxer, const void* data, size_t bytes, uint32_t pts, uint32_t dts);
 
+/// g711 alaw/mu-law
+int flv_muxer_g711a(flv_muxer_t* muxer, const void* data, size_t bytes, uint32_t pts, uint32_t dts);
+int flv_muxer_g711u(flv_muxer_t* muxer, const void* data, size_t bytes, uint32_t pts, uint32_t dts);
+
+/// @param[in] data opus stream, first opus head, then opus samples
+int flv_muxer_opus(flv_muxer_t* muxer, const void* data, size_t bytes, uint32_t pts, uint32_t dts);
+
 /// @param[in] data h.264 annexb bitstream: H.264 start code + H.264 NALU, 0x0000000168...
 int flv_muxer_avc(flv_muxer_t* muxer, const void* data, size_t bytes, uint32_t pts, uint32_t dts);
 
 /// @param[in] data h.265 annexb bitstream: H.265 start code + H.265 NALU, 0x00000001...
 int flv_muxer_hevc(flv_muxer_t* muxer, const void* data, size_t bytes, uint32_t pts, uint32_t dts);
+
+/// @param[in] data av1 low overhead bitstream format
+int flv_muxer_av1(flv_muxer_t* muxer, const void* data, size_t bytes, uint32_t pts, uint32_t dts);
 
 struct flv_metadata_t
 {
@@ -46,6 +56,8 @@ struct flv_metadata_t
 	int videocodecid;
 	double videodatarate; // kbps
 	double framerate; // fps
+	double duration;
+	int interval; // frame interval
 	int width;
 	int height;
 };

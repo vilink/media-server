@@ -9,9 +9,6 @@
 #define strcasecmp	_stricmp
 #endif
 
-enum { SDP_M_MEDIA_UNKOWN=0, SDP_M_MEDIA_AUDIO, SDP_M_MEDIA_VIDEO, SDP_M_MEDIA_TEXT, SDP_M_MEDIA_APPLICATION, SDP_M_MEDIA_MESSAGE };
-enum { SDP_M_PROTO_UKNOWN=0, SDP_M_PROTO_UDP, SDP_M_PROTO_RTP_AVP, SDP_M_PROTO_RTP_SAVP };
-
 #define N_EMAIL 1
 #define N_PHONE 1
 #define N_CONNECTION 1
@@ -57,10 +54,10 @@ struct sdp_bandwidth
 
 struct bandwidths
 {
-	size_t count;
+	int count;
+    int capacity;
 	struct sdp_bandwidth bandwidths[N_BANDWIDTH];
 	struct sdp_bandwidth *ptr;
-	size_t capacity;
 };
 
 struct sdp_repeat
@@ -70,10 +67,10 @@ struct sdp_repeat
 
 	struct offset
 	{
-		size_t count;
+		int count;
+        int capacity;
 		char *offsets[N_REPEAT_OFFSET];
 		char **ptr;
-		size_t capacity;
 	} offsets;
 };
 
@@ -90,18 +87,18 @@ struct sdp_timing
 
 	struct repeat
 	{
-		size_t count;
+		int count;
+        int capacity;
 		struct sdp_repeat repeats[N_REPEAT];
 		struct sdp_repeat *ptr;
-		size_t capacity;
 	} r;
 
 	struct timezone_t
 	{
-		size_t count;
-		struct sdp_timezone timezones[N_TIMEZONE];
+		int count;
+		int capacity;
+        struct sdp_timezone timezones[N_TIMEZONE];
 		struct sdp_timezone *ptr;
-		size_t capacity;
 	} z;
 };
 
@@ -119,10 +116,10 @@ struct sdp_attribute
 
 struct attributes
 {
-	size_t count;
+	int count;
+    int capacity;
 	struct sdp_attribute attrs[N_ATTRIBUTE];
 	struct sdp_attribute *ptr;
-	size_t capacity;
 };
 
 struct sdp_media
@@ -132,19 +129,19 @@ struct sdp_media
 	char* proto; // udp, RTP/AVP, RTP/SAVP
 	struct format
 	{
-		size_t count;
+		int count;
+        int capacity;
 		char *formats[N_MEDIA_FORMAT];
 		char **ptr;
-		size_t capacity;
 	} fmt;
 
 	char* i;
 	struct connection
 	{
-		size_t count;
+		int count;
+        int capacity;
 		struct sdp_connection connections[N_EMAIL];
 		struct sdp_connection *ptr;
-		size_t capacity;
 	} c;
 
 	struct attributes a;
@@ -155,7 +152,7 @@ struct sdp_media
 struct sdp_t
 {
 	char *raw; // raw source string
-	size_t offset; // parse offset
+	int offset; // parse offset
 
 	int v;
 
@@ -166,18 +163,18 @@ struct sdp_t
 
 	struct email
 	{
-		size_t count;
+		int count;
+        int capacity;
 		struct sdp_email emails[N_EMAIL];
 		struct sdp_email *ptr;
-		size_t capacity;
 	} e;
 
 	struct phone
 	{
-		size_t count;
+		int count;
+        int capacity;
 		struct sdp_phone phones[N_PHONE];
 		struct sdp_phone *ptr;
-		size_t capacity;
 	} p;
 
 	struct sdp_connection c;
@@ -186,10 +183,10 @@ struct sdp_t
 
 	struct timing
 	{
-		size_t count;
+		int count;
+        int capacity;
 		struct sdp_timing times[N_TIMING];
 		struct sdp_timing *ptr;
-		size_t capacity;
 	} t;
 
 	struct sdp_encryption k;
@@ -198,10 +195,10 @@ struct sdp_t
 
 	struct media
 	{
-		size_t count;
+		int count;
+        int capacity;
 		struct sdp_media medias[N_MEDIA];
 		struct sdp_media *ptr;
-		size_t capacity;
 	} m;
 };
 
@@ -212,15 +209,17 @@ static inline void sdp_skip_space(struct sdp_t* sdp)
 		c = sdp->raw[++sdp->offset];
 }
 
-static inline size_t sdp_token_word(struct sdp_t* sdp, const char* escape)
+static inline int sdp_token_word(struct sdp_t* sdp, const char* escape)
 {
-	size_t n = sdp->offset;
+	int n = sdp->offset;
 	sdp->offset += strcspn(sdp->raw + sdp->offset, escape);
 	return sdp->offset - n;
 }
 
 static inline int sdp_token_crlf(struct sdp_t* sdp)
 {
+	sdp_skip_space(sdp);
+
 	if('\r' == sdp->raw[sdp->offset])
 		++sdp->offset;
 	
@@ -237,7 +236,7 @@ static inline int sdp_token_crlf(struct sdp_t* sdp)
 	return -1;
 }
 
-static inline void trim_right(const char* s, size_t *len)
+static inline void trim_right(const char* s, int *len)
 {
 	//// left trim
 	//while(*len > 0 && isspace(s[*pos]))
@@ -253,7 +252,7 @@ static inline void trim_right(const char* s, size_t *len)
 	}
 }
 
-static inline struct sdp_timing* sdp_get_timing(struct sdp_t* sdp, size_t idx)
+static inline struct sdp_timing* sdp_get_timing(struct sdp_t* sdp, int idx)
 {
 	if(idx >= sdp->t.count)
 		return NULL;
@@ -261,7 +260,7 @@ static inline struct sdp_timing* sdp_get_timing(struct sdp_t* sdp, size_t idx)
 	return idx >= N_TIMING ? &sdp->t.ptr[idx - N_TIMING] : &sdp->t.times[idx];
 }
 
-static inline struct sdp_media* sdp_get_media(struct sdp_t* sdp, size_t idx)
+static inline struct sdp_media* sdp_get_media(struct sdp_t* sdp, int idx)
 {
 	if(idx >= sdp->m.count)
 		return NULL;
@@ -299,50 +298,43 @@ static int sdp_parse_version(struct sdp_t* sdp)
 // <addrtype> IP4/IP6
 static int sdp_parse_origin(struct sdp_t* sdp)
 {
-	size_t n[6];
+	char* v[6];
+	char** vv[6];
+	int i, j, n[6];
 	struct sdp_origin *o;
+	static const char* default_username = "-";
 
 	o = &sdp->o;
 	memset(o, 0, sizeof(struct sdp_origin));
 	memset(n, 0, sizeof(n));
 
 	sdp_skip_space(sdp);
-	o->username = sdp->raw + sdp->offset;
-	n[0] = sdp_token_word(sdp, " \t\r\n");
-
-	sdp_skip_space(sdp);
-	o->session = sdp->raw + sdp->offset;
-	n[1] = sdp_token_word(sdp, " \t\r\n");
-
-	sdp_skip_space(sdp);
-	o->session_version = sdp->raw + sdp->offset;
-	n[2] = sdp_token_word(sdp, " \t\r\n");
-
-	sdp_skip_space(sdp);
-	o->c.network = sdp->raw + sdp->offset;
-	n[3] = sdp_token_word(sdp, " \t\r\n");
-
-	sdp_skip_space(sdp);
-	o->c.addrtype = sdp->raw + sdp->offset;
-	n[4] = sdp_token_word(sdp, " \t\r\n");
-
-	sdp_skip_space(sdp);
-	o->c.address = sdp->raw + sdp->offset;
-	n[5] = sdp_token_word(sdp, " \t\r\n");
-
-	// check before assign '\0'
-	if(0==sdp_token_crlf(sdp) && n[0]>0 && n[1]>0 && n[2]>0 && n[3]>0 && n[4]>0 && n[5]>0)
+	for (i = 0; i < 6 && sdp->raw[sdp->offset] && !strchr("\r\n", sdp->raw[sdp->offset]); i++)
 	{
-		o->username[n[0]] = '\0';
-		o->session[n[1]] = '\0';
-		o->session_version[n[2]] = '\0';
-		o->c.network[n[3]] = '\0';
-		o->c.addrtype[n[4]] = '\0';
-		o->c.address[n[5]] = '\0';
-		return 0;
+		v[i] = sdp->raw + sdp->offset;
+		n[i] = sdp_token_word(sdp, " \t\r\n");
+		sdp_skip_space(sdp);
 	}
 
-	return -1;
+	sdp_token_crlf(sdp);
+	if (i < 5)
+		return 0;
+
+	o->username = (char*)default_username; // default value
+	vv[0] = &o->username;
+	vv[1] = &o->session;
+	vv[2] = &o->session_version;
+	vv[3] = &o->c.network;
+	vv[4] = &o->c.addrtype;
+	vv[5] = &o->c.address;
+	for (j = 5; i > 0; j--)
+	{
+		i--;
+		v[i][n[i]] = '\0';
+		*vv[j] = v[i];
+	}
+
+	return 0;
 }
 
 // RFC4566 5.3
@@ -350,7 +342,7 @@ static int sdp_parse_origin(struct sdp_t* sdp)
 // There MUST be one and only one "s=" field per session description. can be empty
 static int sdp_parse_session(struct sdp_t* sdp)
 {
-	size_t n = 0;
+	int n = 0;
 
 	sdp->s = sdp->raw + sdp->offset;
 
@@ -369,7 +361,7 @@ static int sdp_parse_session(struct sdp_t* sdp)
 // default UTF-8
 static int sdp_parse_information(struct sdp_t* sdp)
 {
-	size_t n = 0;
+	int n = 0;
 	char **i;
 
 	if(sdp->m.count > 0)
@@ -397,7 +389,7 @@ static int sdp_parse_information(struct sdp_t* sdp)
 // specified before the first media field. 
 static int sdp_parse_uri(struct sdp_t* sdp)
 {
-	size_t n = 0;
+	int n = 0;
 
 	// No more than one URI field is allowed per session description.
 	assert(!sdp->u);
@@ -423,7 +415,7 @@ static int sdp_parse_uri(struct sdp_t* sdp)
 // e=Jane Doe <j.doe@example.com>
 static int sdp_parse_email(struct sdp_t* sdp)
 {
-	size_t n = 0;
+	int n = 0;
 	struct sdp_email *e;
 
 	if(sdp->e.count >= N_EMAIL)
@@ -433,7 +425,7 @@ static int sdp_parse_email(struct sdp_t* sdp)
 			void* ptr;
 			ptr = (struct sdp_email*)realloc(sdp->e.ptr, (sdp->e.capacity+8)*sizeof(struct sdp_email));
 			if(!ptr)
-				return ENOMEM;
+				return -ENOMEM;
 
 			sdp->e.ptr = ptr;
 			sdp->e.capacity += 8;
@@ -460,7 +452,7 @@ static int sdp_parse_email(struct sdp_t* sdp)
 
 static int sdp_parse_phone(struct sdp_t* sdp)
 {
-	size_t n = 0;
+	int n = 0;
 	struct sdp_phone *p;
 
 	if(sdp->p.count >= N_PHONE)
@@ -470,7 +462,7 @@ static int sdp_parse_phone(struct sdp_t* sdp)
 			void* ptr;
 			ptr = (struct sdp_phone*)realloc(sdp->p.ptr, (sdp->p.capacity+8)*sizeof(struct sdp_phone));
 			if(!ptr)
-				return ENOMEM;
+				return -ENOMEM;
 
 			sdp->p.ptr = ptr;
 			sdp->p.capacity += 8;
@@ -507,7 +499,7 @@ static int sdp_parse_phone(struct sdp_t* sdp)
 // used for IP unicast addresses
 static int sdp_parse_connection(struct sdp_t* sdp)
 {
-	size_t n[3];
+	int n[3];
 	struct sdp_media *m;
 	struct sdp_connection *c;
 
@@ -522,7 +514,7 @@ static int sdp_parse_connection(struct sdp_t* sdp)
 				void* ptr;
 				ptr = (struct sdp_connection*)realloc(m->c.ptr, (m->c.capacity+8)*sizeof(struct sdp_connection));
 				if(!ptr)
-					return ENOMEM;
+					return -ENOMEM;
 
 				m->c.ptr = ptr;
 				m->c.capacity += 8;
@@ -577,7 +569,7 @@ static int sdp_parse_connection(struct sdp_t* sdp)
 // b=X-YZ:128
 static int sdp_parse_bandwidth(struct sdp_t* sdp)
 {
-	size_t n[2];
+	int n[2];
 	struct bandwidths *bs;
 	struct sdp_bandwidth *b;
 
@@ -597,7 +589,7 @@ static int sdp_parse_bandwidth(struct sdp_t* sdp)
 			void* ptr;
 			ptr = (struct sdp_bandwidth*)realloc(bs->ptr, (bs->capacity+8)*sizeof(struct sdp_bandwidth));
 			if(!ptr)
-				return ENOMEM;
+				return -ENOMEM;
 
 			bs->ptr = ptr;
 			bs->capacity += 8;
@@ -648,7 +640,7 @@ static int sdp_parse_bandwidth(struct sdp_t* sdp)
 //    until after the <start-time>. If the <start-time> is also zero, the session is regarded as permanent.
 static int sdp_parse_timing(struct sdp_t* sdp)
 {
-	size_t n[2];
+	int n[2];
 	struct sdp_timing *t;
 
 	if(sdp->t.count >= N_TIMING)
@@ -658,7 +650,7 @@ static int sdp_parse_timing(struct sdp_t* sdp)
 			void* ptr;
 			ptr = (struct sdp_timing*)realloc(sdp->t.ptr, (sdp->t.capacity+8)*sizeof(struct sdp_timing));
 			if(!ptr)
-				return ENOMEM;
+				return -ENOMEM;
 
 			sdp->t.ptr = ptr;
 			sdp->t.capacity += 8;
@@ -702,7 +694,7 @@ static int sdp_append_timing_repeat_offset(struct sdp_repeat *r, char* offset)
 			void* ptr;
 			ptr = (char**)realloc(r->offsets.ptr, (r->offsets.capacity+8)*sizeof(char*));
 			if(!ptr)
-				return ENOMEM;
+				return -ENOMEM;
 
 			r->offsets.ptr = ptr;
 			r->offsets.capacity += 8;
@@ -727,7 +719,7 @@ static int sdp_append_timing_repeat_offset(struct sdp_repeat *r, char* offset)
 static int sdp_parse_repeat(struct sdp_t* sdp)
 {
 	int ret;
-	size_t n[3];
+	int n[3];
 	char *offset;
 	struct sdp_timing *t;
 	struct sdp_repeat *r;
@@ -744,7 +736,7 @@ static int sdp_parse_repeat(struct sdp_t* sdp)
 			void* ptr;
 			ptr = (struct sdp_repeat*)realloc(t->r.ptr, (t->r.capacity+8)*sizeof(struct sdp_repeat));
 			if(!ptr)
-				return ENOMEM;
+				return -ENOMEM;
 
 			t->r.ptr = ptr;
 			t->r.capacity += 8;
@@ -836,7 +828,7 @@ static int sdp_parse_timezone(struct sdp_t* sdp)
 				void* ptr;
 				ptr = (struct sdp_timezone*)realloc(t->z.ptr, (t->z.capacity+8)*sizeof(struct sdp_timezone));
 				if(!ptr)
-					return ENOMEM;
+					return -ENOMEM;
 
 				t->z.ptr = ptr;
 				t->z.capacity += 8;
@@ -869,7 +861,7 @@ static int sdp_parse_timezone(struct sdp_t* sdp)
 // it applies to all media in the session), or for each media entry as required.
 static int sdp_parse_encryption(struct sdp_t* sdp)
 {
-	size_t n[2];
+	int n[2];
 	struct sdp_encryption *k;
 
 	if(sdp->m.count > 0)
@@ -927,7 +919,7 @@ static int sdp_parse_encryption(struct sdp_t* sdp)
 // a=fmtp:<format> <format specific parameters>
 static int sdp_parse_attribute(struct sdp_t* sdp)
 {
-	size_t n[2];
+	int n[2];
 	struct attributes *as;
 	struct sdp_attribute *a;
 
@@ -947,7 +939,7 @@ static int sdp_parse_attribute(struct sdp_t* sdp)
 			void* ptr;
 			ptr = (struct sdp_attribute*)realloc(as->ptr, (as->capacity+8)*sizeof(struct sdp_attribute));
 			if(!ptr)
-				return ENOMEM;
+				return -ENOMEM;
 
 			as->ptr = ptr;
 			as->capacity += 8;
@@ -994,7 +986,7 @@ static int sdp_append_media_format(struct sdp_media *m, char* fmt)
 			void* ptr;
 			ptr = (char**)realloc(m->fmt.ptr, (m->fmt.capacity+8)*sizeof(char*));
 			if(!ptr)
-				return ENOMEM;
+				return -ENOMEM;
 
 			m->fmt.ptr = ptr;
 			m->fmt.capacity += 8;
@@ -1022,7 +1014,7 @@ static int sdp_append_media_format(struct sdp_media *m, char* fmt)
 static int sdp_parse_media(struct sdp_t* sdp)
 {
 	int ret;
-	size_t n[4];
+	int n[4];
 	char *fmt;
 	struct sdp_media *m;
 
@@ -1033,7 +1025,7 @@ static int sdp_parse_media(struct sdp_t* sdp)
 			void* ptr;
 			ptr = (struct sdp_media*)realloc(sdp->m.ptr, (sdp->m.capacity+8)*sizeof(struct sdp_media));
 			if(!ptr)
-				return ENOMEM;
+				return -ENOMEM;
 
 			sdp->m.ptr = ptr;
 			sdp->m.capacity += 8;
@@ -1064,7 +1056,7 @@ static int sdp_parse_media(struct sdp_t* sdp)
 	fmt = sdp->raw + sdp->offset;
 	n[3] = sdp_token_word(sdp, " \t\r\n");
 
-	while(' ' == fmt[n[3]] || '\t' == fmt[n[3]])
+	while (' ' == fmt[n[3]] || '\t' == fmt[n[3]])
 	{
 		fmt[n[3]] = '\0';
 		ret = sdp_append_media_format(m, fmt);
@@ -1096,20 +1088,72 @@ static int sdp_parse_media(struct sdp_t* sdp)
 	return -1;
 }
 
-static void* sdp_create(void)
+// gb28181 extension
+static int sdp_parse_gb28181_ssrc(struct sdp_t* sdp)
+{
+	int n;
+	struct attributes* as;
+	struct sdp_attribute* a;
+
+	if (sdp->m.count > 0)
+	{
+		as = &sdp_get_media(sdp, sdp->m.count - 1)->a;
+	}
+	else
+	{
+		as = &sdp->a;
+	}
+
+	if (as->count >= N_ATTRIBUTE)
+	{
+		if (as->count - N_ATTRIBUTE >= as->capacity)
+		{
+			void* ptr;
+			ptr = (struct sdp_attribute*)realloc(as->ptr, (as->capacity + 8) * sizeof(struct sdp_attribute));
+			if (!ptr)
+				return -ENOMEM;
+
+			as->ptr = ptr;
+			as->capacity += 8;
+		}
+
+		a = &as->ptr[as->count - N_ATTRIBUTE];
+	}
+	else
+	{
+		a = &as->attrs[as->count];
+	}
+
+	memset(a, 0, sizeof(struct sdp_attribute));
+	a->name = "ssrc";
+	a->value = sdp->raw + sdp->offset;
+
+	n = sdp_token_word(sdp, "\r\n");
+	if (0 != sdp_token_crlf(sdp))
+		return -1;
+
+	a->value[n] = '\0';
+	++as->count;
+	return 0;
+}
+
+static void* sdp_create(const char* s, int len)
 {
 	struct sdp_t *sdp;
-	sdp = (struct sdp_t*)malloc(sizeof(struct sdp_t));
+	sdp = (struct sdp_t*)malloc(sizeof(struct sdp_t) + len + 1);
 	if( !sdp )
 		return NULL;
 
 	memset(sdp, 0, sizeof(struct sdp_t));
+	sdp->raw = (char*)(sdp + 1);
+	memcpy(sdp->raw, s, len);
+	sdp->raw[len] = 0;
 	return sdp;
 }
 
 void sdp_destroy(struct sdp_t* sdp)
 {
-	size_t i;
+	int i;
 	struct sdp_media *m;
 	struct sdp_timing *t;
 
@@ -1149,31 +1193,27 @@ void sdp_destroy(struct sdp_t* sdp)
 
 		if(m->c.count > N_CONNECTION)
 			free(m->c.ptr);
+
+		if (m->b.count > N_BANDWIDTH)
+			free(m->b.ptr);
 	}
 
 	if(sdp->m.count > N_MEDIA)
 		free(sdp->m.ptr);
 
-	if(sdp->raw)
-		free(sdp->raw);
-
 	free(sdp);
 }
 
-struct sdp_t* sdp_parse(const char* s)
+struct sdp_t* sdp_parse(const char* s, int len)
 {
 	int r;
 	char c;
 	struct sdp_t *sdp;
 
 	assert(s);
-	sdp = (struct sdp_t*)sdp_create();
+	sdp = (struct sdp_t*)sdp_create(s, len);
 	if(!sdp)
 		return NULL;
-
-	sdp->raw = strdup(s);
-	if(!sdp->raw)
-		goto parse_failed;
 
 	while(sdp->raw[sdp->offset] && !strchr("\r\n", sdp->raw[sdp->offset]))
 	{
@@ -1248,11 +1288,15 @@ struct sdp_t* sdp_parse(const char* s)
 			r = sdp_parse_media(sdp);
 			break;
 
+		case 'y':
+			r = sdp_parse_gb28181_ssrc(sdp);
+			break;
+
 		default:
-			assert(0); // unknown sdp
-            r = 0;
-			while(*s && '\n' != *s)
-				++s; // skip line
+			// unknown sdp
+			sdp_token_word(sdp, "\r\n");
+			r = sdp_token_crlf(sdp);
+			break;
 		}
 
 		if(0 != r)
@@ -1332,7 +1376,7 @@ int sdp_email_count(struct sdp_t* sdp)
 
 const char* sdp_email_get(struct sdp_t* sdp, int idx)
 {
-	if((size_t)idx >= sdp->e.count || idx < 0)
+	if(idx >= sdp->e.count || idx < 0)
 		return NULL;
 
 	return idx < N_EMAIL ? sdp->e.emails[idx].email : sdp->e.ptr[idx - N_EMAIL].email;
@@ -1345,7 +1389,7 @@ int sdp_phone_count(struct sdp_t* sdp)
 
 const char* sdp_phone_get(struct sdp_t* sdp, int idx)
 {
-	if((size_t)idx >= sdp->p.count || idx < 0)
+	if(idx >= sdp->p.count || idx < 0)
 		return NULL;
 
 	return idx < N_PHONE ? sdp->p.phones[idx].phone : sdp->p.ptr[idx - N_PHONE].phone;
@@ -1496,35 +1540,35 @@ static inline int sdp_media_format_value(const char* format)
 {
 	switch(format[0])
 	{
-	case 'a': return ('u' == format[1]) ? SDP_M_FMT_UDP_AUDIO : SDP_M_FMT_UDP_APPLICATION;
-	case 'v': return SDP_M_FMT_UDP_VIDEO;
-	case 't': return SDP_M_FMT_UDP_TEXT;
-	case 'm': return SDP_M_FMT_UDP_MESSAGE;
+	case 'a': return ('u' == format[1]) ? SDP_M_MEDIA_AUDIO : SDP_M_MEDIA_APPLICATION;
+	case 'v': return SDP_M_MEDIA_VIDEO;
+	case 't': return SDP_M_MEDIA_TEXT;
+	case 'm': return SDP_M_MEDIA_MESSAGE;
 	default: return atoi(format);
 	}
 	//if(0 == strcasecmp("video", format))
-	//	return SDP_M_FMT_UDP_VIDEO;
+	//	return SDP_M_MEDIA_VIDEO;
 	//else if(0 == strcasecmp("audio", format))
-	//	return SDP_M_FMT_UDP_AUDIO;
+	//	return SDP_M_MEDIA_AUDIO;
 	//else if(0 == strcasecmp("text", format))
-	//	return SDP_M_FMT_UDP_TEXT;
+	//	return SDP_M_MEDIA_TEXT;
 	//else if(0 == strcasecmp("application", format))
-	//	return SDP_M_FMT_UDP_APPLICATION;
+	//	return SDP_M_MEDIA_APPLICATION;
 	//else if(0 == strcasecmp("message", format))
-	//	return SDP_M_FMT_UDP_MESSAGE;
+	//	return SDP_M_MEDIA_MESSAGE;
 	//else
 	//	return atoi(format);
 }
 
 int sdp_media_formats(struct sdp_t* sdp, int media, int *formats, int count)
 {
-	size_t i;
+	int i;
 	struct sdp_media *m;
 	m = sdp_get_media(sdp, media);
 	if(!m)
 		return -1;
 
-	for(i = 0; i < (size_t)count && i < m->fmt.count; i++)
+	for(i = 0; i < count && i < m->fmt.count; i++)
 	{
 		if(i < N_MEDIA_FORMAT)
 			formats[i] = sdp_media_format_value(m->fmt.formats[i]);
@@ -1533,6 +1577,28 @@ int sdp_media_formats(struct sdp_t* sdp, int media, int *formats, int count)
 	}
 
 	return (int)m->fmt.count;
+}
+
+int sdp_media_get_connection(sdp_t* sdp, int media, const char** network, const char** addrtype, const char** address)
+{
+    struct sdp_media *m;
+    struct sdp_connection *conn;
+
+    m = sdp_get_media(sdp, media);
+    if(m && m->c.count > 0)
+        conn = &m->c.connections[0];
+    else
+        conn = &sdp->c;
+    
+    if(conn && conn->network && conn->addrtype && conn->address)
+    {
+        *network = conn->network;
+        *addrtype = conn->addrtype;
+        *address = conn->address;
+        return 0;
+    }
+    
+    return -1;
 }
 
 int sdp_media_get_connection_address(struct sdp_t* sdp, int media, char* ip, int bytes)
@@ -1605,48 +1671,6 @@ int sdp_media_get_connection_addrtype(struct sdp_t* sdp, int media)
 	return SDP_C_ADDRESS_UNKNOWN;
 }
 
-const char* sdp_media_attribute_find(struct sdp_t* sdp, int media, const char* name)
-{
-	size_t i;
-	struct sdp_media *m;
-	struct sdp_attribute *attr;
-
-	m = sdp_get_media(sdp, media);
-	for(i = 0; name && m && i < m->a.count; i++)
-	{
-		if(i < N_ATTRIBUTE)
-			attr = m->a.attrs + i;
-		else
-			attr = m->a.ptr + i - N_ATTRIBUTE;
-
-		if(attr->name && 0==strcmp(attr->name, name))
-			return attr->value;
-	}
-
-	return NULL;
-}
-
-int sdp_media_attribute_list(struct sdp_t* sdp, int media, const char* name, void (*onattr)(void* param, const char* name, const char* value), void* param)
-{
-	size_t i;
-	struct sdp_media *m;
-	struct sdp_attribute *attr;
-
-	m = sdp_get_media(sdp, media);
-	for(i = 0; m && i < m->a.count; i++)
-	{
-		if(i < N_ATTRIBUTE)
-			attr = m->a.attrs + i;
-		else
-			attr = m->a.ptr + i - N_ATTRIBUTE;
-
-		if( !name || (attr->name && 0==strcmp(attr->name, name)) )
-			onattr(param, attr->name, attr->value);
-	}
-
-	return 0;
-}
-
 int sdp_media_bandwidth_count(struct sdp_t* sdp, int media)
 {
 	struct sdp_media *m;
@@ -1691,7 +1715,7 @@ int sdp_attribute_count(struct sdp_t* sdp)
 int sdp_attribute_get(struct sdp_t* sdp, int idx, const char** name, const char** value)
 {
 	struct sdp_attribute *attr;
-	if(idx < 0 || (size_t)idx > sdp->a.count)
+	if(idx < 0 || idx > sdp->a.count)
 		return -1; // not found
 
 	if(idx < N_ATTRIBUTE)
@@ -1704,48 +1728,74 @@ int sdp_attribute_get(struct sdp_t* sdp, int idx, const char** name, const char*
 	return 0;
 }
 
-const char* sdp_attribute_find(struct sdp_t* sdp, const char* name)
+static const char* sdp_attribute_find_impl(const struct attributes* a, const char* name)
 {
-	size_t i;
-	struct sdp_attribute *attr;
-	for(i = 0; name && i < sdp->a.count; i++)
-	{
-		if(i < N_ATTRIBUTE)
-			attr = sdp->a.attrs + i;
-		else
-			attr = sdp->a.ptr + i - N_ATTRIBUTE;
+	int i;
+	const struct sdp_attribute* attr;
 
-		if(attr->name && 0==strcmp(attr->name, name))
+	for (i = 0; name && i < a->count; i++)
+	{
+		if (i < N_ATTRIBUTE)
+			attr = a->attrs + i;
+		else
+			attr = a->ptr + i - N_ATTRIBUTE;
+
+		if (attr->name && 0 == strcmp(attr->name, name))
 			return attr->value;
 	}
 
 	return NULL;
 }
 
-int sdp_attribute_list(struct sdp_t* sdp, const char* name, void (*onattr)(void* param, const char* name, const char* value), void* param)
+static int sdp_attribute_list_impl(const struct attributes* a, const char* name, void (*onattr)(void* param, const char* name, const char* value), void* param)
 {
-	size_t i;
-	struct sdp_attribute *attr;
-	for(i = 0; i < sdp->a.count; i++)
-	{
-		if(i < N_ATTRIBUTE)
-			attr = sdp->a.attrs + i;
-		else
-			attr = sdp->a.ptr + i - N_ATTRIBUTE;
+	int i;
+	const struct sdp_attribute* attr;
 
-		if( !name || (attr->name && 0==strcmp(attr->name, name)) )
+	for (i = 0; i < a->count; i++)
+	{
+		if (i < N_ATTRIBUTE)
+			attr = a->attrs + i;
+		else
+			attr = a->ptr + i - N_ATTRIBUTE;
+
+		if (!name || (attr->name && 0 == strcmp(attr->name, name)))
 			onattr(param, attr->name, attr->value);
 	}
 
 	return 0;
 }
 
+const char* sdp_media_attribute_find(struct sdp_t* sdp, int media, const char* name)
+{
+	struct sdp_media* m;
+	m = sdp_get_media(sdp, media);
+	return m ? sdp_attribute_find_impl(&m->a, name) : NULL;
+}
+
+int sdp_media_attribute_list(struct sdp_t* sdp, int media, const char* name, void (*onattr)(void* param, const char* name, const char* value), void* param)
+{
+	struct sdp_media* m;
+	m = sdp_get_media(sdp, media);
+	return m ? sdp_attribute_list_impl(&m->a, name, onattr, param) : -1;
+}
+
+const char* sdp_attribute_find(struct sdp_t* sdp, const char* name)
+{
+	return sdp_attribute_find_impl(&sdp->a, name);
+}
+
+int sdp_attribute_list(struct sdp_t* sdp, const char* name, void (*onattr)(void* param, const char* name, const char* value), void* param)
+{
+	return sdp_attribute_list_impl(&sdp->a, name, onattr, param);
+}
+
 static int sdp_attribute_mode(struct attributes* a)
 {
-	const int v[] = { SDP_A_SENDRECV, SDP_A_SENDONLY, SDP_A_RECVONLY, SDP_A_INACTIVE };
-	char* mode[] = { "sendrecv", "sendonly", "recvonly", "inactive" };
+	static const int values[] = { SDP_A_SENDRECV, SDP_A_SENDONLY, SDP_A_RECVONLY, SDP_A_INACTIVE };
+	static const char* strings[] = { "sendrecv", "sendonly", "recvonly", "inactive" };
 
-	size_t i, j;
+	int i, j;
 	const struct sdp_attribute *attr;
 	for (i = 0; i < a->count; i++)
 	{
@@ -1754,19 +1804,14 @@ static int sdp_attribute_mode(struct attributes* a)
 		else
 			attr = a->ptr + i - N_ATTRIBUTE;
 
-		for (j = 0; j < sizeof(mode) / sizeof(mode[0]); j++)
+		for (j = 0; j < sizeof(values) / sizeof(values[0]); j++)
 		{
-			if (attr->name && 0 == strcmp(mode[j], attr->name))
-				return v[j];
+			if (attr->name && 0 == strcmp(strings[j], attr->name))
+				return values[j];
 		}
 	}
 
 	return -1;
-}
-
-static int sdp_session_mode(struct sdp_t* sdp)
-{
-	return sdp_attribute_mode(&sdp->a);
 }
 
 int sdp_media_mode(struct sdp_t* sdp, int media)
@@ -1775,5 +1820,6 @@ int sdp_media_mode(struct sdp_t* sdp, int media)
 	struct sdp_media *m;
 	m = sdp_get_media(sdp, media);
 	mode = m ? sdp_attribute_mode(&m->a) : -1;
-	return -1 == mode ? sdp_session_mode(sdp) : mode;
+	mode = -1 == mode ? sdp_attribute_mode(&sdp->a) : mode;
+	return -1 == mode ? SDP_A_SENDRECV : mode; // default SDP_A_SENDRECV
 }

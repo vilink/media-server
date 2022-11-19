@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <stdio.h>
+#include <errno.h>
 
 #define TIMEOUT_RECV 20000
 #define TIMEOUT_SEND 20000
@@ -61,7 +62,7 @@ struct aio_rtmp_server_t* aio_rtmp_server_create(const char* ip, int port, struc
 	struct aio_rtmp_server_t *ctx;
 
 	// create server socket
-	socket = socket_tcp_listen(ip, (u_short)port, SOMAXCONN);
+	socket = socket_tcp_listen(0 /*AF_UNSPEC*/, ip, (u_short)port, SOMAXCONN, 0, 1);
 	if (socket_invalid == socket)
 	{
 		printf("%s(%s, %d): create socket error: %d\n", __FUNCTION__, ip, port, socket_geterror());
@@ -291,5 +292,5 @@ static int rtmp_handler_ongetduration(void* param, const char* app, const char* 
 	session = (struct aio_rtmp_session_t*)param;
 	if (session->server->handle.ongetduration)
 		return session->server->handle.ongetduration(session->server->param, app, stream, duration);
-	return -1;
+	return -EINVAL;
 }

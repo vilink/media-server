@@ -4,8 +4,6 @@
 #include "rtp-payload.h"
 #include <assert.h>
 
-#define MAX_UDP_PACKET (1450-16)
-
 extern "C" uint32_t rtp_ssrc(void);
 
 PSFileSource::PSFileSource(const char *file)
@@ -24,7 +22,7 @@ PSFileSource::PSFileSource(const char *file)
 	func.free = Free;
 	func.write = Packet;
 	m_ps = ps_muxer_create(&func, this);
-    m_ps_stream = ps_muxer_add_stream(m_ps, STREAM_VIDEO_H264, NULL, 0);
+    m_ps_stream = ps_muxer_add_stream(m_ps, PSI_STREAM_H264, NULL, 0);
 
 	static struct rtp_payload_t s_psfunc = {
 		PSFileSource::RTPAlloc,
@@ -168,11 +166,11 @@ void PSFileSource::Free(void* /*param*/, void* packet)
 	return free(packet);
 }
 
-void PSFileSource::Packet(void* param, int /*avtype*/, void* pes, size_t bytes)
+int PSFileSource::Packet(void* param, int /*avtype*/, void* pes, size_t bytes)
 {
 	PSFileSource* self = (PSFileSource*)param;
 	time64_t clock = time64_now();
-	rtp_payload_encode_input(self->m_pspacker, pes, bytes, clock * 90 /*kHz*/);
+	return rtp_payload_encode_input(self->m_pspacker, pes, (int)bytes, (uint32_t)(clock * 90 /*kHz*/));
 }
 
 void* PSFileSource::RTPAlloc(void* param, int bytes)
@@ -188,12 +186,14 @@ void PSFileSource::RTPFree(void* param, void *packet)
 	assert(self->m_packet == packet);
 }
 
-void PSFileSource::RTPPacket(void* param, const void *packet, int bytes, uint32_t /*timestamp*/, int /*flags*/)
+int PSFileSource::RTPPacket(void* param, const void *packet, int bytes, uint32_t /*timestamp*/, int /*flags*/)
 {
 	PSFileSource *self = (PSFileSource*)param;
 	assert(self->m_packet == packet);
 
 	int r = self->m_transport->Send(false, packet, bytes);
-	assert(r == (int)bytes);
-	rtp_onsend(self->m_rtp, packet, bytes/*, time*/);
+	if (r != bytes)
+		return -1;
+	
+	return rtp_onsend(self->m_rtp, packet, bytes/*, time*/);
 }

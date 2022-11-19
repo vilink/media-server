@@ -31,7 +31,7 @@ void* rtp_create(struct rtp_event_t *handler, void* param, uint32_t ssrc, uint32
 
 	memcpy(&ctx->handler, handler, sizeof(ctx->handler));
 	ctx->cbparam = param;
-	ctx->rtcp_bw = (size_t)(bandwidth * RTCP_BANDWIDTH_FRACTION);
+	ctx->rtcp_bw = (int)(bandwidth * RTCP_BANDWIDTH_FRACTION);
 	ctx->avg_rtcp_size = 0;
 	ctx->frequence = frequence;
 	ctx->role = sender ? RTP_SENDER : RTP_RECEIVER;
@@ -67,8 +67,8 @@ int rtp_onsend(void* rtp, const void* data, int bytes)
 	if(0 != rtp_packet_deserialize(&pkt, data, bytes))
 		return -1; // packet error
 
-	//ctx->self->rtp_clock = rtpclock();
-	//ctx->self->rtp_timestamp = pkt.rtp.timestamp; // RTP timestamp
+	ctx->self->rtp_clock = rtpclock();
+	ctx->self->rtp_timestamp = pkt.rtp.timestamp; // RTP timestamp
 	ctx->self->rtp_bytes += pkt.payloadlen;
 	ctx->self->rtp_packets += 1;
 	return 0;
@@ -122,6 +122,30 @@ int rtp_rtcp_bye(void* rtp, void* data, int bytes)
 	return rtcp_bye_pack(ctx, (uint8_t*)data, bytes);
 }
 
+int rtp_rtcp_app(void* rtp, void* data, int bytes, const char name[4], const void* app, int len)
+{
+	struct rtp_context* ctx = (struct rtp_context*)rtp;
+	return rtcp_app_pack(ctx, (uint8_t*)data, bytes, name, app, len);
+}
+
+int rtp_rtcp_rtpfb(void* rtp, void* data, int bytes, enum rtcp_rtpfb_type_t id, const rtcp_rtpfb_t* rtpfb)
+{
+	struct rtp_context* ctx = (struct rtp_context*)rtp;
+	return rtcp_rtpfb_pack(ctx, (uint8_t*)data, bytes, id, rtpfb);
+}
+
+int rtp_rtcp_psfb(void* rtp, void* data, int bytes, enum rtcp_psfb_type_t id, const rtcp_psfb_t* psfb)
+{
+	struct rtp_context* ctx = (struct rtp_context*)rtp;
+	return rtcp_psfb_pack(ctx, (uint8_t*)data, bytes, id, psfb);
+}
+
+int rtp_rtcp_xr(void* rtp, void* data, int bytes, enum rtcp_xr_type_t id, const rtcp_xr_t* xr)
+{
+	struct rtp_context* ctx = (struct rtp_context*)rtp;
+	return rtcp_xr_pack(ctx, (uint8_t*)data, bytes, id, xr);
+}
+
 int rtp_rtcp_interval(void* rtp)
 {
 	double interval;
@@ -129,7 +153,7 @@ int rtp_rtcp_interval(void* rtp)
 	interval = rtcp_interval(rtp_member_list_count(ctx->members),
 		rtp_member_list_count(ctx->senders) + ((RTP_SENDER==ctx->role) ? 1 : 0),
 		ctx->rtcp_bw, 
-		(ctx->self->rtp_clock + 2*RTCP_REPORT_INTERVAL > rtpclock()) ? 1 : 0,
+		(ctx->self->rtp_clock + 2*RTCP_REPORT_INTERVAL*1000 > rtpclock()) ? 1 : 0,
 		ctx->avg_rtcp_size,
 		ctx->init);
 
@@ -155,7 +179,7 @@ const char* rtp_get_name(void* rtp, uint32_t ssrc)
 int rtp_set_info(void* rtp, const char* cname, const char* name)
 {
 	struct rtp_context *ctx = (struct rtp_context *)rtp;
-	rtp_member_setvalue(ctx->self, RTCP_SDES_CNAME, (const uint8_t*)cname, strlen(cname));
-	rtp_member_setvalue(ctx->self, RTCP_SDES_NAME, (const uint8_t*)name, strlen(name));
+	rtp_member_setvalue(ctx->self, RTCP_SDES_CNAME, (const uint8_t*)cname, (int)strlen(cname));
+	rtp_member_setvalue(ctx->self, RTCP_SDES_NAME, (const uint8_t*)name, (int)strlen(name));
 	return 0;
 }

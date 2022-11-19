@@ -6,6 +6,10 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#if defined(OS_WINDOWS)
+	#define strncasecmp	_strnicmp
+#endif
+
 struct rtsp_client_t* rtsp_client_create(const char* uri, const char* usr, const char* pwd, const struct rtsp_client_handler_t *handler, void* param)
 {
 	struct rtsp_client_t *rtsp;
@@ -17,7 +21,7 @@ struct rtsp_client_t* rtsp_client_create(const char* uri, const char* usr, const
 	snprintf(rtsp->usr, sizeof(rtsp->usr) - 1, "%s", usr ? usr : "");
 	snprintf(rtsp->pwd, sizeof(rtsp->pwd) - 1, "%s", pwd ? pwd : "");
 	
-	rtsp->parser = http_parser_create(HTTP_PARSER_CLIENT);
+	rtsp->parser = http_parser_create(HTTP_PARSER_RESPONSE, NULL, NULL);
 	memcpy(&rtsp->handler, handler, sizeof(rtsp->handler));
 	rtsp->rtp.onrtp = rtsp->handler.onrtp;
 	rtsp->rtp.param = param;
@@ -52,7 +56,6 @@ static int rtsp_client_handle(struct rtsp_client_t* rtsp, http_parser_t* parser)
 {
 	switch (rtsp->state)
 	{
-	case RTSP_ANNOUNCE:	return rtsp_client_announce_onreply(rtsp, parser);
 	case RTSP_DESCRIBE: return rtsp_client_describe_onreply(rtsp, parser);
 	case RTSP_SETUP:	return rtsp_client_setup_onreply(rtsp, parser);
 	case RTSP_PLAY:		return rtsp_client_play_onreply(rtsp, parser);
@@ -61,8 +64,19 @@ static int rtsp_client_handle(struct rtsp_client_t* rtsp, http_parser_t* parser)
 	case RTSP_OPTIONS:	return rtsp_client_options_onreply(rtsp, parser);
 	case RTSP_GET_PARAMETER: return rtsp_client_get_parameter_onreply(rtsp, parser);
 	case RTSP_SET_PARAMETER: return rtsp_client_set_parameter_onreply(rtsp, parser);
+	case RTSP_ANNOUNCE:	return rtsp_client_announce_onreply(rtsp, parser);
+	case RTSP_RECORD:	return rtsp_client_record_onreply(rtsp, parser);
 	default: assert(0); return -1;
 	}
+}
+
+static int rtsp_check_response_line(const char* data, size_t bytes)
+{
+	const char* line = "RTSP/1.0 ";
+	assert(bytes > 0);
+	if (bytes >= 9)
+		bytes = 9;
+	return strncasecmp(line, data, 9);
 }
 
 int rtsp_client_input(struct rtsp_client_t *rtsp, const void* data, size_t bytes)
@@ -77,12 +91,10 @@ int rtsp_client_input(struct rtsp_client_t *rtsp, const void* data, size_t bytes
 
 	do
 	{
-		if (0 == rtsp->parser_need_more_data && (*p == '$' || 0 != rtsp->rtp.state))
+		if(rtsp->parser_need_more_data || 0 == rtsp_check_response_line((const char*)p, (size_t)(end - p)))
 		{
-			p = rtp_over_rtsp(&rtsp->rtp, p, end);
-		}
-		else
-		{
+			// TODO: server->client Announce (update sdp)
+
 			remain = (size_t)(end - p);
 			r = http_parser_input(rtsp->parser, p, &remain);
 			rtsp->parser_need_more_data = r;
@@ -95,9 +107,15 @@ int rtsp_client_input(struct rtsp_client_t *rtsp, const void* data, size_t bytes
 			}
 			p = end - remain;
 		}
+		else
+		{
+			//if (0 == rtsp->parser_need_more_data && (*p == '$' || 0 != rtsp->rtp.state))
+
+			p = rtp_over_rtsp(&rtsp->rtp, p, end);
+		}
 	} while (p < end && r >= 0);
 
-	assert(r <= 1);
+	assert(r <= 2);
 	return r >= 0 ? 0 : r;
 }
 
@@ -116,6 +134,13 @@ const struct rtsp_header_transport_t* rtsp_client_get_media_transport(struct rts
 	if(media < 0 || media >= rtsp->media_count)
 		return NULL;
 	return rtsp->transport + media;
+}
+
+const struct rtsp_media_t* rtsp_client_get_media(struct rtsp_client_t* rtsp, int media)
+{
+	if (media < 0 || media >= rtsp->media_count)
+		return NULL;
+	return rtsp->media + media;
 }
 
 const char* rtsp_client_get_media_encoding(struct rtsp_client_t *rtsp, int media)
@@ -153,4 +178,11 @@ int rtsp_client_get_media_rate(struct rtsp_client_t *rtsp, int media)
 		rate = profile ? profile->frequency : 0;
 	}
 	return rate;
+}
+
+int rtsp_client_get_media_type(struct rtsp_client_t* rtsp, int media)
+{
+	if (media < 0 || media >= rtsp->media_count)
+		return -1;
+	return sdp_option_media_from(rtsp->media[media].media);
 }

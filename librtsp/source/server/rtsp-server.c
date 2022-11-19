@@ -18,7 +18,7 @@ struct rtsp_server_t* rtsp_server_create(const char ip[65], unsigned short port,
 	rtsp->param = ptr;
 	rtsp->sendparam = ptr2;
 	memcpy(&rtsp->handler, handler, sizeof(rtsp->handler));
-	rtsp->parser = http_parser_create(HTTP_PARSER_SERVER);
+	rtsp->parser = http_parser_create(HTTP_PARSER_REQUEST, NULL, NULL);
 	return rtsp;
 }
 
@@ -76,13 +76,14 @@ int rtsp_server_reply2(struct rtsp_server_t *rtsp, int code, const char* header,
 	len = snprintf(rtsp->reply, sizeof(rtsp->reply),
 		"RTSP/1.0 %d %s\r\n"
 		"CSeq: %u\r\n"
-		"Date: %s\r\n",
-		code, rtsp_reason_phrase(code), rtsp->cseq, datetime);
+		"Date: %s\r\n"
+		"User-Agent: %s\r\n",
+		code, rtsp_reason_phrase(code), rtsp->cseq, datetime, USER_AGENT);
 
 	// session header
 	if (len > 0 && rtsp->session.session[0])
 	{
-		len += snprintf(rtsp->reply + len, sizeof(rtsp->reply) - len, "Session: %s\r\n", rtsp->session.session);
+		len += snprintf(rtsp->reply + len, sizeof(rtsp->reply) - len, "Session: %s;timeout=%d\r\n", rtsp->session.session, rtsp->session.timeout/1000);
 	}
 
 	// other headers

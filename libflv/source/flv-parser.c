@@ -1,124 +1,38 @@
 #include "flv-parser.h"
+#include "flv-header.h"
 #include "flv-proto.h"
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 #include <errno.h>
 
-#define FLV_VIDEO_KEY_FRAME	1
+#define N_TAG_SIZE			4	// previous tag size
+#define FLV_HEADER_SIZE		9	// DataOffset included
+#define FLV_TAG_HEADER_SIZE	11	// StreamID included
 
-#define N_FLV_HEADER		9		// DataOffset included
-#define N_TAG_HEADER		11		// StreamID included
-#define N_TAG_SIZE			4		// previous tag size
+#define FLV_VIDEO_CODEC_NAME(codecid) (FLV_VIDEO_H264==(codecid) ? FLV_VIDEO_AVCC : (FLV_VIDEO_H265==(codecid) ? FLV_VIDEO_HVCC : FLV_VIDEO_AV1C))
 
-struct flv_audio_tag_t
+static int flv_parser_audio(struct flv_audio_tag_header_t* audio, const uint8_t* data, size_t bytes, uint32_t timestamp, flv_parser_handler handler, void* param)
 {
-	uint8_t format; // 1-ADPCM, 2-MP3, 10-AAC, 14-MP3 8kHz
-	uint8_t bitrate; // 0-5.5kHz, 1-11kHz, 2-22kHz,3-44kHz
-	uint8_t bitsPerSample; // 0-8bits, 1-16bits
-	uint8_t channel; // 0-Mono sound, ,1-Stereo sound
-};
-
-struct flv_video_tag_t
-{
-	uint8_t frame; // 1-key frame, 2-inter frame, 3-disposable inter frame(H.263 only), 4-generated key frame, 5-video info/command frame
-	uint8_t codecid; // 2-Sorenson H.263, 3-Screen video 4-On2 VP6, 7-AVC
-};
-
-struct flv_parser_t
-{
-	struct flv_audio_tag_t audio;
-	struct flv_video_tag_t video;
-
-	flv_parser_handler handler;
-	void* param;
-};
-
-struct flv_parser_t* flv_parser_create(flv_parser_handler handler, void* param)
-{
-	struct flv_parser_t* flv;
-	flv = (struct flv_parser_t*)calloc(1, sizeof(struct flv_parser_t));
-	if (NULL == flv)
-		return NULL;
-
-	flv->handler = handler;
-	flv->param = param;
-	return flv;
-}
-
-void flv_parser_destroy(struct flv_parser_t* flv)
-{
-	free(flv);
-}
-
-static int flv_parser_audio(struct flv_parser_t* flv, const uint8_t* data, size_t bytes, uint32_t timestamp)
-{
-	flv->audio.format = (data[0] & 0xF0) /*>> 4*/;
-	flv->audio.bitrate = (data[0] & 0x0C) >> 2;
-	flv->audio.bitsPerSample = (data[0] & 0x02) >> 1;
-	flv->audio.channel = data[0] & 0x01;
-
-	if (FLV_AUDIO_AAC == flv->audio.format)
-	{
-		// Adobe Flash Video File Format Specification Version 10.1 >> E.4.2.1 AUDIODATA (p77)
-		// If the SoundFormat indicates AAC, the SoundType should be 1 (stereo) and the SoundRate should be 3 (44 kHz).
-		// However, this does not mean that AAC audio in FLV is always stereo, 44 kHz data.Instead, the Flash Player ignores
-		// these values and extracts the channel and sample rate data is encoded in the AAC bit stream.
-		//assert(3 == flv->audio.bitrate && 1 == flv->audio.channel);
-
-		if (bytes < 4) return -EINVAL;
-
-		if (0 == data[1])
-		{
-			return flv->handler(flv->param, FLV_AUDIO_ASC, data + 2, bytes - 2, timestamp, timestamp, 0);
-		}
-		else
-		{
-			// AAC ES stream
-			assert(bytes <= 0x1FFF);
-			assert(bytes > 2 && 0xFFF0 != (((data[2] << 8) | data[3]) & 0xFFF0)); // don't have ADTS
-			return flv->handler(flv->param, FLV_AUDIO_AAC, data + 2, bytes - 2, timestamp, timestamp, 0);
-		}
-	}
-	else if (FLV_AUDIO_MP3 == flv->audio.format || FLV_AUDIO_MP3_8K == flv->audio.format)
-	{
-		return flv->handler(flv->param, flv->audio.format, data + 1, bytes - 1, timestamp, timestamp, 0);
-	}
+	if (FLV_SEQUENCE_HEADER == audio->avpacket)
+		return handler(param, FLV_AUDIO_AAC == audio->codecid ? FLV_AUDIO_ASC : FLV_AUDIO_OPUS_HEAD, data, bytes, timestamp, timestamp, 0);
 	else
-	{
-		// Audio frame data
-		return flv->handler(flv->param, flv->audio.format, data + 1, bytes - 1, timestamp, timestamp, 0);
-	}
+		return handler(param, audio->codecid, data, bytes, timestamp, timestamp, 0);
 }
 
-static int flv_parser_video(struct flv_parser_t* flv, const uint8_t* data, size_t bytes, uint32_t timestamp)
+static int flv_parser_video(struct flv_video_tag_header_t* video, const uint8_t* data, size_t bytes, uint32_t timestamp, flv_parser_handler handler, void* param)
 {
-	uint8_t packetType; // 0-AVC sequence header, 1-AVC NALU, 2-AVC end of sequence
-	int32_t compositionTime; // 0
-
-	flv->video.frame = (data[0] & 0xF0) >> 4;
-	flv->video.codecid = (data[0] & 0x0F);
-
-	if (FLV_VIDEO_H264 == flv->video.codecid || FLV_VIDEO_H265 == flv->video.codecid)
+	if (FLV_VIDEO_H264 == video->codecid || FLV_VIDEO_H265 == video->codecid || FLV_VIDEO_AV1 == video->codecid)
 	{
-		if (bytes < 5) return -EINVAL;
-
-		packetType = data[1];
-		compositionTime = (data[2] << 16) | (data[3] << 8) | data[4];
-		//if (compositionTime >= (1 << 23)) compositionTime -= (1 << 24);
-		compositionTime = (compositionTime + 0xFF800000) ^ 0xFF800000; // signed 24-integer
-
-		if (0 == packetType)
+		if (FLV_SEQUENCE_HEADER == video->avpacket)
 		{
-			// AVCDecoderConfigurationRecord
-			assert(bytes > 5 + 7);
-			return flv->handler(flv->param, FLV_VIDEO_H264 == flv->video.codecid ? FLV_VIDEO_AVCC : FLV_VIDEO_HVCC, data + 5, bytes - 5, timestamp, timestamp, 0);
+			return handler(param, FLV_VIDEO_CODEC_NAME(video->codecid), data, bytes, timestamp, timestamp, 0);
 		}
-		else if (1 == packetType)
+		else if (FLV_AVPACKET == video->avpacket)
 		{
-			return flv->handler(flv->param, FLV_VIDEO_H264 == flv->video.codecid ? FLV_VIDEO_H264 : FLV_VIDEO_H265, data + 5, bytes - 5, timestamp + compositionTime, timestamp, (FLV_VIDEO_KEY_FRAME == flv->video.frame) ? 1 : 0);
+			return handler(param, video->codecid, data, bytes, timestamp + video->cts, timestamp, (FLV_VIDEO_KEY_FRAME == video->keyframe) ? 1 : 0);
 		}
-		else if (2 == packetType)
+		else if (FLV_END_OF_SEQUENCE == video->avpacket)
 		{
 			return 0; // AVC end of sequence (lower level NALU sequence ender is not required or supported)
 		}
@@ -131,36 +45,217 @@ static int flv_parser_video(struct flv_parser_t* flv, const uint8_t* data, size_
 	else
 	{
 		// Video frame data
-		return flv->handler(flv->param, flv->video.codecid, data + 1, bytes - 1, timestamp, timestamp, (FLV_VIDEO_KEY_FRAME == flv->video.frame) ? 1 : 0);
+		return handler(param, video->codecid, data, bytes, timestamp, timestamp, (FLV_VIDEO_KEY_FRAME == video->keyframe) ? 1 : 0);
 	}
 }
 
 // http://www.cnblogs.com/musicfans/archive/2012/11/07/2819291.html
 // metadata keyframes/filepositions
-//static int flv_parser_script(struct flv_parser_t* flv, const uint8_t* data, size_t bytes)
-//{
-//	// FLV I-index
-//	return 0;
-//}
-
-int flv_parser_input(struct flv_parser_t* flv, int type, const void* data, size_t bytes, uint32_t timestamp)
+static int flv_parser_script(const uint8_t* data, size_t bytes, uint32_t timestamp, flv_parser_handler handler, void* param)
 {
+	return handler(param, FLV_SCRIPT_METADATA, data, bytes, timestamp, timestamp, 0);
+}
+
+int flv_parser_tag(int type, const void* data, size_t bytes, uint32_t timestamp, flv_parser_handler handler, void* param)
+{
+	int n;
+	struct flv_audio_tag_header_t audio;
+	struct flv_video_tag_header_t video;
+
 	if (bytes < 1) return -EINVAL;
 
 	switch (type)
 	{
 	case FLV_TYPE_AUDIO:
-		return flv_parser_audio(flv, data, bytes, timestamp);
+		n = flv_audio_tag_header_read(&audio, data, bytes);
+		if (n < 0)
+			return n;
+		return flv_parser_audio(&audio, (const uint8_t*)data + n, (int)bytes - n, timestamp, handler, param);
 
 	case FLV_TYPE_VIDEO:
-		return flv_parser_video(flv, data, bytes, timestamp);
+		n = flv_video_tag_header_read(&video, data, bytes);
+		if (n < 0)
+			return n;
+		return flv_parser_video(&video, (const uint8_t*)data + n, (int)bytes - n, timestamp, handler, param);
 
 	case FLV_TYPE_SCRIPT:
-		//return flv_parser_script(flv, data, bytes);
-		return 0;
+		n = flv_data_tag_header_read(data, bytes);
+		if (n < 0)
+			return n;
+		return flv_parser_script((const uint8_t*)data + n, (int)bytes - n, timestamp, handler, param);
 
 	default:
 		assert(0);
 		return -1;
 	}
+}
+
+static size_t flv_parser_append(struct flv_parser_t* parser, const uint8_t* data, size_t bytes, size_t expect)
+{
+	size_t n;
+	if (parser->bytes > expect || expect > sizeof(parser->ptr))
+	{
+		// invalid status, consume all
+		assert(0);
+		parser->bytes = expect;
+		return bytes;
+	}
+
+	n = parser->bytes + bytes >= expect ? expect - parser->bytes : bytes;
+	if (n > 0)
+	{
+		memcpy(parser->ptr + parser->bytes, data, n);
+		parser->bytes += n;
+	}
+	return n;
+}
+
+int flv_parser_input(struct flv_parser_t* parser, const uint8_t* data, size_t bytes, flv_parser_handler handler, void* param)
+{
+    int r;
+	size_t n;
+	uint8_t codec;
+	uint32_t size;
+	enum {FLV_HEADER=0, FLV_HEADER_OFFSET, FLV_PREVIOUS_SIZE, FLV_TAG_HEADER, FLV_AVHEADER_CODEC, FLV_AVHEADER_EXTRA, FLV_TAG_BODY};
+
+	for (n = r = 0; bytes > 0 && n >= 0 && 0 == r; data += n, bytes -= n)
+	{
+		switch (parser->state)
+		{
+		case FLV_HEADER:
+			n = flv_parser_append(parser, data, bytes, FLV_HEADER_SIZE);
+			if (FLV_HEADER_SIZE == parser->bytes)
+			{
+				flv_header_read(&parser->header, parser->ptr, parser->bytes);
+				if (parser->header.offset < 9 || parser->header.offset > sizeof(parser->ptr))
+					return -1;
+				parser->header.offset -= 9;
+				parser->state = parser->header.offset > 0 ? FLV_HEADER_OFFSET : FLV_PREVIOUS_SIZE;
+				parser->bytes = 0;
+			}
+			break;
+
+		case FLV_HEADER_OFFSET:
+			n = flv_parser_append(parser, data, bytes, parser->header.offset);
+			if (parser->header.offset == (uint32_t)parser->bytes)
+			{
+				parser->bytes = 0;
+				parser->state = FLV_PREVIOUS_SIZE;
+			}
+			break;
+
+		case FLV_PREVIOUS_SIZE:
+			n = flv_parser_append(parser, data, bytes, N_TAG_SIZE);
+			if (N_TAG_SIZE == parser->bytes)
+			{
+				flv_tag_size_read(parser->ptr, parser->bytes, &size);
+				assert(size == 0 || size == parser->tag.size + FLV_TAG_HEADER_SIZE);
+				parser->bytes = 0;
+				parser->state = FLV_TAG_HEADER;
+			}
+			break;
+
+		case FLV_TAG_HEADER:
+			n = flv_parser_append(parser, data, bytes, FLV_TAG_HEADER_SIZE);
+			if (FLV_TAG_HEADER_SIZE == parser->bytes)
+			{
+				flv_tag_header_read(&parser->tag, parser->ptr, parser->bytes);
+				parser->bytes = 0;
+				parser->expect = 0;
+				parser->state = FLV_AVHEADER_CODEC;
+			}
+			break;
+			
+		case FLV_AVHEADER_CODEC:
+			switch (parser->tag.type)
+			{
+			case FLV_TYPE_AUDIO:
+				parser->expect = 1;
+				n = flv_parser_append(parser, data, bytes, 1);
+				codec = (parser->ptr[0] & 0xF0) /*>> 4*/;
+				if (FLV_AUDIO_AAC == codec || FLV_AUDIO_OPUS == codec)
+					parser->expect = 2;
+				break;
+
+			case FLV_TYPE_VIDEO:
+				parser->expect = 1;
+				n = flv_parser_append(parser, data, bytes, 1);
+				codec = (parser->ptr[0] & 0x0F);
+				if (FLV_VIDEO_H264 == codec || FLV_VIDEO_H265 == codec || FLV_VIDEO_AV1 == codec)
+					parser->expect = 5;
+				break;
+
+			case FLV_TYPE_SCRIPT:
+				parser->expect = 0;
+				n = 0; // noops
+				break;
+
+			default:
+				assert(0);
+				return -1; // invalid flv file
+			}
+			parser->state = FLV_AVHEADER_EXTRA;
+			break;
+
+		case FLV_AVHEADER_EXTRA:
+			n = flv_parser_append(parser, data, bytes, parser->expect);
+			if (parser->expect == parser->bytes)
+			{
+				if(FLV_TYPE_AUDIO == parser->tag.type)
+					flv_audio_tag_header_read(&parser->audio, parser->ptr, parser->bytes);
+				else if(FLV_TYPE_VIDEO == parser->tag.type)
+					flv_video_tag_header_read(&parser->video, parser->ptr, parser->bytes);
+				parser->bytes = 0;
+				parser->state = FLV_TAG_BODY;
+
+				parser->expect = parser->tag.size - parser->expect;
+				parser->body = parser->alloc ? parser->alloc(param, parser->expect) : malloc(parser->expect);
+				if (!parser->body)
+					return -1;
+			}
+			break;
+
+		case FLV_TAG_BODY:
+			assert(parser->body && parser->bytes <= parser->expect);
+			n = parser->bytes + bytes >= parser->expect ? parser->expect - parser->bytes : bytes;
+			if(n > 0) {
+				memmove(parser->body + parser->bytes, data, n);
+				parser->bytes += n;
+			}
+
+			if (parser->expect == parser->bytes)
+			{
+				parser->bytes = 0;
+				parser->state = FLV_PREVIOUS_SIZE;
+				switch (parser->tag.type)
+				{
+				case FLV_TYPE_AUDIO:
+					r = flv_parser_audio(&parser->audio, parser->body, parser->expect, parser->tag.timestamp, handler, param);
+					break;
+
+				case FLV_TYPE_VIDEO:
+					r = flv_parser_video(&parser->video, parser->body, parser->expect, parser->tag.timestamp, handler, param);
+					break;
+
+				case FLV_TYPE_SCRIPT:
+					r = flv_parser_script(parser->body, parser->expect, parser->tag.timestamp, handler, param);
+					break;
+
+				default:
+					assert(0);
+					r = -1;
+					break;
+				}
+				
+				parser->free ? parser->free(param, parser->body) : free(parser->body);
+			}
+			break;
+
+		default:
+			assert(0);
+			return -1;
+		}
+	}
+
+	return r;
 }

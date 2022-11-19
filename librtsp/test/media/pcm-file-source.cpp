@@ -89,7 +89,7 @@ int PCMFileSource::Seek(int64_t pos)
 	if (!m_fp) return -1;
 	m_pos = pos;
 	m_rtp_clock = 0;
-	return fseek(m_fp, pos * 8, SEEK_CUR);
+	return fseek(m_fp, (long)pos * 8, SEEK_CUR);
 }
 
 int PCMFileSource::SetSpeed(double speed)
@@ -175,12 +175,14 @@ void PCMFileSource::RTPFree(void* param, void *packet)
 	assert(self->m_packet == packet);
 }
 
-void PCMFileSource::RTPPacket(void* param, const void *packet, int bytes, uint32_t /*timestamp*/, int /*flags*/)
+int PCMFileSource::RTPPacket(void* param, const void *packet, int bytes, uint32_t /*timestamp*/, int /*flags*/)
 {
 	PCMFileSource *self = (PCMFileSource*)param;
 	assert(self->m_packet == packet);
 
 	int r = self->m_transport->Send(false, packet, bytes);
-	assert(r == (int)bytes);
-	rtp_onsend(self->m_rtp, packet, bytes/*, time*/);
+	if (r != bytes)
+		return -1;
+
+	return rtp_onsend(self->m_rtp, packet, bytes/*, time*/);
 }

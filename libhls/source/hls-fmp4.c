@@ -38,7 +38,7 @@ static int mov_buffer_read(void* param, void* data, uint64_t bytes)
 	struct hls_fmp4_t* fmp4;
 	fmp4 = (struct hls_fmp4_t*)param;
 	if (fmp4->offset + bytes > fmp4->bytes)
-		return E2BIG;
+		return -E2BIG;
 	memcpy(data, fmp4->ptr + fmp4->offset, (size_t)bytes);
 	return 0;
 }
@@ -50,7 +50,7 @@ static int mov_buffer_write(void* param, const void* data, uint64_t bytes)
 	struct hls_fmp4_t* fmp4;
 	fmp4 = (struct hls_fmp4_t*)param;
 	if (fmp4->offset + bytes > fmp4->maxsize)
-		return E2BIG;
+		return -E2BIG;
 
 	if (fmp4->offset + (size_t)bytes > fmp4->capacity)
 	{
@@ -58,7 +58,7 @@ static int mov_buffer_write(void* param, const void* data, uint64_t bytes)
 		capacity = capacity > fmp4->maxsize ? fmp4->maxsize : capacity;
 		ptr = realloc(fmp4->ptr, capacity);
 		if (NULL == ptr)
-			return ENOMEM;
+			return -ENOMEM;
 		fmp4->ptr = ptr;
 		fmp4->capacity = capacity;
 	}
@@ -70,19 +70,19 @@ static int mov_buffer_write(void* param, const void* data, uint64_t bytes)
 	return 0;
 }
 
-static int mov_buffer_seek(void* param, uint64_t offset)
+static int mov_buffer_seek(void* param, int64_t offset)
 {
 	struct hls_fmp4_t* fmp4;
 	fmp4 = (struct hls_fmp4_t*)param;
-	if (offset >= fmp4->maxsize)
-		return E2BIG;
-	fmp4->offset = (size_t)offset;
+    if ((offset >= 0 ? offset : -offset) >= fmp4->maxsize)
+		return -E2BIG;
+    fmp4->offset = (size_t)(offset >= 0 ? offset : fmp4->maxsize+offset);
 	return 0;
 }
 
-static uint64_t mov_buffer_tell(void* param)
+static int64_t mov_buffer_tell(void* param)
 {
-	return ((struct hls_fmp4_t*)param)->offset;
+	return (int64_t)((struct hls_fmp4_t*)param)->offset;
 }
 
 static struct mov_buffer_t s_io = {
@@ -230,7 +230,7 @@ int hls_fmp4_init_segment(hls_fmp4_t* hls, void* data, size_t bytes)
 	hls->maxsize = bytes;
 
 	r = fmp4_writer_init_segment(hls->mp4);
-	r = 0 ==  r ? hls->bytes : -1;
+	r = 0 ==  r ? (int)hls->bytes : -1;
 
 	// restore
 	hls->ptr = ptr;

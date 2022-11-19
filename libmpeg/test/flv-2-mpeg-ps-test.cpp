@@ -1,7 +1,6 @@
 #include "flv-demuxer.h"
 #include "flv-reader.h"
 #include "flv-proto.h"
-#include "mpeg-ps-proto.h"
 #include "mpeg-ps.h"
 #include "sys/system.h"
 #include <stdio.h>
@@ -22,12 +21,12 @@ static void ps_free(void* /*param*/, void* /*packet*/)
 	return;
 }
 
-static void ps_write(void* param, int stream, void* packet, size_t bytes)
+static int ps_write(void* param, int stream, void* packet, size_t bytes)
 {
-	fwrite(packet, bytes, 1, (FILE*)param);
+	return 1 == fwrite(packet, bytes, 1, (FILE*)param) ? 0 : ferror((FILE*)param);
 }
 
-inline const char* ps_type(int type)
+static inline const char* ps_type(int type)
 {
 	switch (type)
 	{
@@ -51,18 +50,18 @@ static int flv_ondemux(void* ps, int codec, const void* data, size_t bytes, uint
 		switch (codec)
 		{
 		case FLV_AUDIO_MP3:
-			i = ps_muxer_add_stream((ps_muxer_t*)ps, STREAM_AUDIO_MP3, NULL, 0);
+			i = ps_muxer_add_stream((ps_muxer_t*)ps, PSI_STREAM_MP3, NULL, 0);
 			break;
 		case FLV_AUDIO_ASC:
-			i = ps_muxer_add_stream((ps_muxer_t*)ps, STREAM_AUDIO_AAC, NULL, 0);
+			i = ps_muxer_add_stream((ps_muxer_t*)ps, PSI_STREAM_AAC, NULL, 0);
 			streams[FLV_AUDIO_AAC] = i;
 			return 0;
 		case FLV_VIDEO_AVCC:
-			i = ps_muxer_add_stream((ps_muxer_t*)ps, STREAM_VIDEO_H264, NULL, 0);
+			i = ps_muxer_add_stream((ps_muxer_t*)ps, PSI_STREAM_H264, NULL, 0);
 			streams[FLV_VIDEO_H264] = i;
 			return 0;
 		case FLV_VIDEO_HVCC:
-			i = ps_muxer_add_stream((ps_muxer_t*)ps, STREAM_VIDEO_H265, NULL, 0);
+			i = ps_muxer_add_stream((ps_muxer_t*)ps, PSI_STREAM_H265, NULL, 0);
 			streams[FLV_VIDEO_H265] = i;
 			return 0;
 		default: return 0;
@@ -80,7 +79,7 @@ static int flv_ondemux(void* ps, int codec, const void* data, size_t bytes, uint
 void flv_2_mpeg_ps_test(const char* flv)
 {
 	char output[256] = { 0 };
-	snprintf(output, sizeof(output), "%s.ps", flv);
+	snprintf(output, sizeof(output) - 1, "%s.ps", flv);
 
 	struct ps_muxer_func_t handler;
 	handler.alloc = ps_alloc;
@@ -94,11 +93,13 @@ void flv_2_mpeg_ps_test(const char* flv)
 	flv_demuxer_t* demuxer = flv_demuxer_create(flv_ondemux, ps);
 
 	int r, type;
+	size_t taglen;
 	uint32_t timestamp;
 	static uint8_t packet[2 * 1024 * 1024];
-	while ((r = flv_reader_read(f, &type, &timestamp, packet, sizeof(packet))) > 0)
+	while (1 == flv_reader_read(f, &type, &timestamp, &taglen, packet, sizeof(packet)))
 	{
-		assert(0 == flv_demuxer_input(demuxer, type, packet, r, timestamp));
+		r = flv_demuxer_input(demuxer, type, packet, taglen, timestamp);
+		assert(0 == r);
 	}
 
 	flv_demuxer_destroy(demuxer);

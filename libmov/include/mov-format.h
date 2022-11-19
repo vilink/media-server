@@ -6,8 +6,8 @@
 // http://www.mp4ra.org/object.html
 #define MOV_OBJECT_TEXT		0x08 // Text Stream
 #define MOV_OBJECT_MP4V		0x20 // Visual ISO/IEC 14496-2 (c)
-#define MOV_OBJECT_H264		0x21 // Visual ITU-T Recommendation H.264 | ISO/IEC 14496-10 
-#define MOV_OBJECT_HEVC		0x23 // Visual ISO/IEC 23008-2 | ITU-T Recommendation H.265
+#define MOV_OBJECT_H264		0x21 // Visual ITU-T Recommendation H.264 | ISO/IEC 14496-10
+#define MOV_OBJECT_H265		0x23 // Visual ISO/IEC 23008-2 | ITU-T Recommendation H.265
 #define MOV_OBJECT_AAC		0x40 // Audio ISO/IEC 14496-3
 #define MOV_OBJECT_MP2V		0x60 // Visual ISO/IEC 13818-2 Simple Profile
 #define MOV_OBJECT_AAC_MAIN	0x66 // MPEG-2 AAC Main
@@ -19,10 +19,23 @@
 #define MOV_OBJECT_JPEG		0x6C // Visual ISO/IEC 10918-1 (JPEG)
 #define MOV_OBJECT_PNG		0x6D // Portable Network Graphics (f)
 #define MOV_OBJECT_JPEG2000	0x6E // Visual ISO/IEC 15444-1 (JPEG 2000)
+#define MOV_OBJECT_VC1      0xA3 // SMPTE VC-1 Video
+#define MOV_OBJECT_DIRAC    0xA4 // Dirac Video Coder
+#define MOV_OBJECT_AC3      0xA5 // AC-3
+#define MOV_OBJECT_EAC3     0xA6 // Enhanced AC-3
 #define MOV_OBJECT_G719		0xA8 // ITU G.719 Audio
+#define MOV_OBJECT_DTS      0xA9 // Core Substream
 #define MOV_OBJECT_OPUS		0xAD // Opus audio
+#define MOV_OBJECT_VP9      0xB1 // VP9 Video
+#define MOV_OBJECT_FLAC     0xC1 // nonstandard from FFMPEG
+#define MOV_OBJECT_VP8      0xC2 // nonstandard
 #define MOV_OBJECT_G711a	0xFD // ITU G.711 alaw
 #define MOV_OBJECT_G711u	0xFE // ITU G.711 ulaw
+#define MOV_OBJECT_AV1		0xFF // AV1: https://aomediacodec.github.io/av1-isobmff
+
+#define MOV_OBJECT_NONE		0x00 // unknown object id
+#define MOV_OBJECT_HEVC		MOV_OBJECT_H265
+#define MOV_OBJECT_AVC		MOV_OBJECT_H264
 
 /// MOV flags
 #define MOV_FLAG_FASTSTART	0x00000001
